@@ -6,8 +6,6 @@ use MRC::DB;
 use Bio::SeqIO;
 use Data::Dumper;
 
-my $DIV_SIZE = 1000000;    #how many sequences will be written to 1 file for the sifting;
-
 # Need to extract all of the new CDS from the DB
 # Need to oragnize the information in manageable pieces
 
@@ -32,12 +30,19 @@ sub gather_CDS {
 	`mkdir $output_dir`            unless -e $output_dir;
 
 	my $DB = DBI->connect( $db, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
+	my $count_statement = "SELECT COUNT(g.gene_oid) FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
 	my $prepare_statement = "SELECT g.gene_oid, g.protein FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
 	$prepare_statement .= "NOT " unless $old;
 	$prepare_statement .= "IN (SELECT f.gene_oid FROM familymembers f)";
 	print STDERR "prepare_statement: $prepare_statement\n";
 	my $query = $DB->prepare($prepare_statement);
 	$query->execute();
+	my $total_seqs = count_all_CDS(	old        => 0,
+									db         => $DB_pointer,
+									username   => $username,
+									password   => $password,
+	);
+	my $div_size = int($total_seq \ 14);
 	my $count       = 0;
 	my $div         = 1;
 	my $output_file = $output_dir."/";
@@ -50,7 +55,7 @@ sub gather_CDS {
 
 	while ( my @results = $query->fetchrow() ) {
 		$count++;
-		if ( $count % $DIV_SIZE == 0 && $fragmented ) {
+		if ( $count % $div_size == 0 && $fragmented ) {
 			close(OUT);
 			$div++;
 			open( OUT, ">$output_dir/"."newCDS_$div.fasta" ) || die "Can't open $output_dir/"."newCDS_$div.fasta for writing: $!\n";
@@ -60,7 +65,80 @@ sub gather_CDS {
 	close(OUT);
 	print "Inside db_gather_all_non_familymembers_CDS\n";
 	print "Found $count sequences\n";
-	return ( $div, $file_core );
+	return $file_core;
+}
+
+
+sub insert_familymembers{
+	my %args = @_;
+	my $input_file = $args{input};
+	my $db         = $args{db};
+	my $username   = $args{username};
+	my $password   = $args{password};
+	my $output_dir = $args{output};
+	#if the output_dir does not exists create it.
+	print "Creating $output_dir\n" unless -e $output_dir;
+	`mkdir -p $output_dir`         unless -e $output_dir;
+	my $analysis = MRC->new();
+	$analysis->set_dbi_connection($db_pointer);
+	$analysis->set_username($username);
+	$analysis->set_password($password);
+	$analysis->build_schema();
+	open(IN, $input_file) or die "Can't open $input_file for reading: $!\n";
+	while(<IN>){
+		chomp($_);
+		next if  $_ =~ m/^#/;
+		my @line = split(/\t/,$_);
+		my $seq = $line[0];
+		my $family = $line[1];
+		my $gene = $analysis->get_gene_from_gene_oid($seq);
+		open(OUT,">>$output_dir/$family_newCDS.fasta")|| die "Can't open $output_dir/$family_newCDS.fasta for writing : $!\n";
+		print OUT ">".$seq."\n".$gene->{"protein"}."\n";
+		close(OUT);
+		$analysis->insert_familymember($family, $seq);
+	}
+	close(IN);
+}
+
+sub insert_fc{
+	my %args = @_;
+	my $db         = $args{db};
+	my $username   = $args{username};
+	my $password   = $args{password};
+	my $author         = $args{author};
+	my $description   = $args{description};
+	my $name   = $args{name};
+	my $analysis = MRC->new();
+	$analysis->set_dbi_connection($db_pointer);
+	$analysis->set_username($username);
+	$analysis->set_password($password);
+	$analysis->build_schema();
+	$analysis->insert_family_construction($description,$name,$author);
+	return 1;
+}
+
+sub count_all_CDS{
+	my %args       = @_;
+	my $output_dir = $args{output_dir};
+	my $db         = $args{db};
+	my $username   = $args{username};
+	my $password   = $args{password};
+	my $fragmented = $args{fragmented};    #fragment the output in smaller pieces 1 or 0
+	my $old        = $args{old};           #gather family members or not (1 or 0)
+
+	#if the output_dir does not exists create it.
+	print "Creating $output_dir\n" unless -e $output_dir;
+	`mkdir $output_dir`            unless -e $output_dir;
+
+	my $DB = DBI->connect( $db, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
+	my $count_statement = "SELECT COUNT(g.gene_oid) FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
+	$count_statement .= "NOT " unless $old;
+	$count_statement .= "IN (SELECT f.gene_oid FROM familymembers f)";
+	print STDERR "prepare_statement: $prepare_statement\n";
+	my $count_query = $DB->prepare($count_statement);
+	$count_query->execute();
+	my $total_seqs = $count_query->fetchrow();
+	return $total_seqs;
 }
 
 sub add_new_family_members {
@@ -91,7 +169,7 @@ sub get_all_famid{
 	my $username = $args{username};
 	my $password = $args{password};
 	my $db_pointer = $args{db};
-	my $DB = DBI->connect( $db, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
+	my $DB = DBI->connect( $db_pointer, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
 	my $results_ref = $DB->selectall_arrayref('SELECT famid FROM family WHERE 1');
 	return $results_ref;
 }
