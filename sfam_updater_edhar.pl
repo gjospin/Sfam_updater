@@ -232,20 +232,20 @@ unless ($skip_sifting) {
 																			   mcl_output_file => $mcl_output_file
 	);
 	Sfam_updater::DB_op::insert_familymembers(
-											   input    => $new_family_IDs_mapping_file,
-											   db       => $DB_pointer,
-											   username => $username,
-											   password => $password,
+											   input      => $new_family_IDs_mapping_file,
+											   db         => $DB_pointer,
+											   username   => $username,
+											   password   => $password,
 											   output_dir => $tmp_data."/new_fams",
 	);
-	
-	
+
 	# Seqs have been split by fam_ids.  Need to align
 	#hmmalin for $tmp_data/old_fams files
-	Sfam_updater::launch_sifting::align_newCDS_to_families(directory=>$tmp_data."/old_fams");
+	Sfam_updater::launch_sifting::align_newCDS_to_families( directory => $tmp_data."/old_fams" );
+
 	#De novo alignment for $tmp_data/new_fams files
-	Sfam_updater::launch_sifting::align_newCDS(directory=>$tmp_data."/new_fams");
-	
+	Sfam_updater::launch_sifting::align_newCDS( directory => $tmp_data."/new_fams" );
+
 }
 
 exit;
