@@ -13,7 +13,8 @@ my (
 	 $skip_DB_inserts,        $total_files_to_sift,  $core_file_to_sift,        $total_files_to_index, $core_file_to_index,
 	 $genome_download_dir,    $genome_file,          $tmp_data,                 $sifting_lastal_db,    $lastal_results_core,
 	 $lastal_leftovers_core,  $CDS_length_hash_ref,  $lastal_new_familymembers, $hmm_file_core,        $number_of_hmms,
-	 $hmmsearch_results_core, $total_files_to_blast, $core_file_to_blast,       $author,               $description
+	 $hmmsearch_results_core, $total_files_to_blast, $core_file_to_blast,       $author,               $description,
+	 $name,
 );
 my $threads = 1;    #default hmmsearch_thread
 
@@ -42,21 +43,21 @@ die "Please provide a description for the new family construction using --descri
 die "Please provide a username for the MySQL database (Needs insert priviledges) using -u\n" unless defined($username);
 die "Please provide a Database pointer for the MySQL database to use using --db\n"           unless defined($DB_pointer);
 
-unless defined($password) {
+if ( !defined($password) ) {
 	print "Enter MySQL password :\n";
-	  $password = <>;
-	  chomp($password);
-  }
+	$password = <>;
+	chomp($password);
+}
 
-  #first thing, create a familyconstruction row
-  Sfam_updater::DB_op::insert_fc(
-								  username    => $username,
-								  password    => $password,
-								  db          => $DB_pointer,
-								  author      => $author,
-								  description => $description,
-								  name        => $name
-  );
+#first thing, create a familyconstruction row
+Sfam_updater::DB_op::insert_fc(
+								username    => $username,
+								password    => $password,
+								db          => $DB_pointer,
+								author      => $author,
+								description => $description,
+								name        => $name
+);
 
 # Read IMG excel spreadsheet and download new genomes
 # Insert new genomes and genes information in the DB
@@ -209,43 +210,67 @@ unless ($skip_sifting) {
 	#																		threads =>$threads
 	#);
 	my $blast_results_core = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/blast_results/blast_output";
-	my $blast_seqs_lengths = Sfam_updater::launch_sifting::compile_sequence_length_hash( file2 => $core_file_to_blast );
-	my $mcl_file = Sfam_updater::launch_sifting::parse_blast(
-															  output_dir         => "$tmp_data/MCL",
-															  blast_results_core => $blast_results_core,
-															  coverage           => 0.8,
-															  evalue             => "1e-10",
-															  seq_lengths        => $blast_seqs_lengths
-	);
-	my $mcl_output_file = Sfam_updater::launch_sifting::launch_mcl(
-																	output_dir => "$tmp_data/MCL",
-																	queue      => "-l jumbo -l h_vmem=50G",
-																	input      => $mcl_file,
-																	mcl_params => "-I 2.0",
-																	error_dir  => "$tmp_data/MCL",
-																	threads    => 16,
-	);
-	my $new_family_IDs_mapping_file = Sfam_updater::launch_sifting::parse_mcl(
-																			   db              => $DB_pointer,
-																			   username        => $username,
-																			   password        => $password,
-																			   mcl_output_file => $mcl_output_file
-	);
-	Sfam_updater::DB_op::insert_familymembers(
-											   input      => $new_family_IDs_mapping_file,
-											   db         => $DB_pointer,
-											   username   => $username,
-											   password   => $password,
-											   output_dir => $tmp_data."/new_fams",
-	);
 
-	# Seqs have been split by fam_ids.  Need to align
-	#hmmalin for $tmp_data/old_fams files
-	Sfam_updater::launch_sifting::align_newCDS_to_families( directory => $tmp_data."/old_fams" );
+	#	my $blast_seqs_lengths = Sfam_updater::launch_sifting::compile_sequence_length_hash( file2 => $core_file_to_blast );
+	#my $mcl_file = Sfam_updater::launch_sifting::parse_blast(
+	#														  output_dir         => "$tmp_data/MCL",
+	#														  blast_results_core => $blast_results_core,
+	#														  coverage           => 0.8,
+	#														  evalue             => "1e-10",
+	#														  seq_lengths        => $blast_seqs_lengths
+	#);
+	#my $mcl_output_file = Sfam_updater::launch_sifting::launch_mcl(
+	#																output_dir => "$tmp_data/MCL",
+	#																queue      => "-l jumbo -l h_vmem=50G",
+	#																input      => $mcl_file,
+	#																mcl_params => "-I 2.0",
+	#																error_dir  => "$tmp_data/MCL",
+	#																threads    => 16,
+	#);
+	my $mcl_output_file             = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL/mcl_output.mcl";
+	my $new_family_IDs_mapping_file = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL/mcl_newCDS_to_fam.map";
 
+	#	my $new_family_IDs_mapping_file = Sfam_updater::launch_sifting::parse_mcl(
+	#																			   db              => $DB_pointer,
+	#																			   username        => $username,
+	#																			   password        => $password,
+	#																			   mcl_output_file => $mcl_output_file,
+	#																			   output_dir => $tmp_data."/MCL",
+	#	);
+	#Sfam_updater::DB_op::insert_familymembers(
+	#										   input    => $new_family_IDs_mapping_file,
+	#										   db       => $DB_pointer,
+	#										   username => $username,
+	#										   password => $password,
+	#										   output   => $tmp_data."/new_fams",
+	#);
+	
+	         # Seqs have been split by fam_ids.  Need to align
+	         #De novo alignment for $tmp_data/new_fams files
+
+	#	Sfam_updater::launch_sifting::build_aln_hmm_trees( directory => $tmp_data."/old_fams",
+	#											repo      => $data_repo,
+	#											total_jobs => 200,
+	#											type => 'old',
+	#											output => $tmp_data."old_fams",
+	#											error => $tmp_data."aln_hmm_trees_old",
+	#											 );
 	#De novo alignment for $tmp_data/new_fams files
-	Sfam_updater::launch_sifting::align_newCDS( directory => $tmp_data."/new_fams" );
+	Sfam_updater::launch_sifting::build_aln_hmm_trees(
+													   directory  => $tmp_data."/new_fams",
+													   repo       => $data_repo,
+													   total_jobs => 200,
+													   type       => 'new',
+													   output     => $tmp_data."new_fams",
+													   error      => $tmp_data."aln_hmm_trees_new",
+	);
 
+	# Insert tree into DB
+	# Insert alignment into DB
+	# Insert hmm into DB
+	# Insert seed hmm into DB for new families
+
+	# package update / Release.
 }
 
 exit;

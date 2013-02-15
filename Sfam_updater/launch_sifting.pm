@@ -323,32 +323,38 @@ sub parse_mcl {
 	my $db              = $args{db};
 	my $username        = $args{username};
 	my $password        = $args{password};
+	my $output_dir   = $args{output_dir};
+	print "Creating $output_dir\n" unless -e $output_dir;
+	`mkdir -p $output_dir`         unless -e $output_dir;
 	my $analysis        = MRC->new();
 	$analysis->set_dbi_connection($db);
 	$analysis->set_username($username);
 	$analysis->set_password($password);
 	$analysis->build_schema();
 	open( MCL_IN, $mcl_output_file ) || die "Can't open $mcl_output_file for reading: $!\n";
-	open( FAM_MAPPING, ">$output_dir/new_familymembers_mcl_mapping.txt" ) || "Can't open $output_dir/new_familymembers_mcl_mapping.txt for writing: $!\n";
-
+	open( FAM_MAPPING, ">$output_dir/mcl_newCDS_to_fam.map" ) || "Can't open $output_dir/mcl_newCDS_to_fam.map for writing: $!\n";
+	my $familyconstruction_id = $analysis->MRC::DB::get_max_familyconstruction_id();
+	print STDERR "Family construction ID used : $familyconstruction_id\n";
 	while (<MCL_IN>) {
+	    chomp($_);
 		my @gene_oids = split( /\t/, $_ );      #1 family per line, gene_oids separated by tabs
 		my $family_size = scalar(@gene_oids);
+	    next if $family_size <= 1; #ignore singletons
 		my (
-			$familyconstruction_id, $fam_alt_id, $name,
+			$fam_alt_id, $name,
 			$description,   $alnpath,          $seed_alnpath, $hmmpath,
 			$reftree,       $alltree,          $universality,
 			$evenness,      $arch_univ,        $bact_univ,    $euk_univ,
 			$unknown_genes, $pathogen_percent, $aquatic_percent
 		  )
 		  = undef;
-		$analysis->insert_family(
+		$analysis->MRC::DB::insert_family(
 								  $familyconstruction_id, $fam_alt_id,       $name,      $description, $alnpath,
 								  $seed_alnpath,          $hmmpath,          $reftree,   $alltree,     $family_size,
 								  $universality,          $evenness,         $arch_univ, $bact_univ,   $euk_univ,
 								  $unknown_genes,         $pathogen_percent, $aquatic_percent
 		);
-		my $family_ID = Sfam_updater::DB_op::get_max_famid();
+		my $family_ID = $analysis->MRC::DB::get_max_famid();
 		foreach my $seqID (@gene_oids){
 			print FAM_MAPPING $seqID."\t".$family_ID."\n";
 		}
@@ -483,10 +489,10 @@ sub launch_blast {
 
 	for ( my $i = 1; $i <= $file_number; $i++ ) {
 		$count++;
-		my $hmmsearch_cmd = "blastp -num_threads $threads $arguments ";
-		$hmmsearch_cmd .= "-subject $blast_input_files_core"."_$i.fasta ";
-		$hmmsearch_cmd .= "-query $blast_input_files_core"."_\$SGE_TASK_ID.fasta ";
-		$hmmsearch_cmd .= "-out $output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
+		my $blast_cmd = "blastp -num_threads $threads $arguments ";
+		$blast_cmd .= "-subject $blast_input_files_core"."_$i.fasta ";
+		$blast_cmd .= "-query $blast_input_files_core"."_\$SGE_TASK_ID.fasta ";
+		$blast_cmd .= "-out $output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
 
 		open( OUT, ">$output_dir/all_v_all_blast_$count.sh" ) || die "Can't open $output_dir/all_v_all_blast_$count.sh: $!\n";
 		print OUT "
@@ -499,7 +505,7 @@ sub launch_blast {
 #\$ -e $error_dir/all_v_all_jobs.err
 #\$ -o $error_dir/all_v_all_jobs.out
 
-$hmmsearch_cmd
+$blast_cmd
 
 ";
 		close(OUT);
@@ -650,3 +656,67 @@ $lastal_cmd
 	}
 	return "$output_dir/last_sift.ouput";
 }
+
+sub build_aln_hmm_trees{
+	my %args = @_;
+	my $type = $args{type};
+	my $directory = $args{directory};
+	my $output_dir = $args{output};
+	my $error_dir = $args{error};
+	my $total_jobs = $args{total_jobs};
+	my $data_repository = $args{repo};
+	##if the output_dir does not exists create it.
+	print "Creating $output_dir\n" unless -e $output_dir;
+	`mkdir -p $output_dir`         unless -e $output_dir;
+	print $directory."/*_$type"."CDS.fasta\n";
+	my @files = glob($directory."/*_$type"."CDS.fasta");
+	##if the error_dir does not exists create it.
+	print "Creating $error_dir\n" unless -e $error_dir;
+	`mkdir -p $error_dir`         unless -e $error_dir;
+	my $low_file = undef;
+	my $high_file = 0;
+	foreach my $file (@files){
+		$file =~ m/\/(\d+)_.*CDS.fasta/;
+		$low_file =$1 if(!defined $low_file);
+		$low_file = $1 if $low_file > $1;
+		$high_file = $1 if $high_file < $1;
+	}
+	my $end_array_job = $low_file+$total_jobs-1;
+	my $cmd = "perl external_software_launcher.pl $type \$SGE_TASK_ID $high_file $total_jobs $directory _$type"."CDS.fasta $output_dir $data_repository";
+	print "$cmd\n";
+	print "Lowfile :$low_file\tHigh file : $high_file\n";
+	open( OUT, ">$output_dir/build_aln_hmm_trees.sh" ) || die "Can't open $output_dir/build_aln_hmm_trees.sh for writing: $!\n";
+	print OUT "
+#!/bin/sh
+#\$ -cwd
+#\$ -V
+#\$ -S /bin/bash
+
+#\$ -t $low_file-$end_array_job
+#\$ -e $error_dir/lastal_sifting_jobs.err
+#\$ -o $error_dir/lastal_sifting_jobs.out
+
+$cmd 
+
+";
+	close(OUT);
+	print "RUNNING $cmd\n";
+	`chmod 755 $output_dir/build_aln_hmm_trees.sh`;
+	my $qsub_command = "qsub -q eisen.q $output_dir/build_aln_hmm_trees.sh";
+	my $qsub         = `$qsub_command`;
+	$qsub =~ /Your job (\d+) /;
+	my $job_id = $1;
+	my $flag   = 1;
+
+	while ($flag) {
+		sleep($SLEEP_DURATION);
+		my $output = `qstat -j $job_id 2>&1`;
+		if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
+			$flag = 0;
+		}
+	}
+	return 1;
+	#for(my $i = 1; $i <= $step; $i++){	
+	#}
+}
+

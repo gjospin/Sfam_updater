@@ -38,11 +38,11 @@ sub gather_CDS {
 	my $query = $DB->prepare($prepare_statement);
 	$query->execute();
 	my $total_seqs = count_all_CDS(	old        => 0,
-									db         => $DB_pointer,
+									db         => $db,
 									username   => $username,
 									password   => $password,
 	);
-	my $div_size = int($total_seq \ 14);
+	my $div_size = int($total_seqs / 14);
 	my $count       = 0;
 	my $div         = 1;
 	my $output_file = $output_dir."/";
@@ -80,10 +80,11 @@ sub insert_familymembers{
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
 	my $analysis = MRC->new();
-	$analysis->set_dbi_connection($db_pointer);
+	$analysis->set_dbi_connection($db);
 	$analysis->set_username($username);
 	$analysis->set_password($password);
 	$analysis->build_schema();
+	print STDERR "Inside insert family member\n";
 	open(IN, $input_file) or die "Can't open $input_file for reading: $!\n";
 	while(<IN>){
 		chomp($_);
@@ -91,11 +92,11 @@ sub insert_familymembers{
 		my @line = split(/\t/,$_);
 		my $seq = $line[0];
 		my $family = $line[1];
-		my $gene = $analysis->get_gene_from_gene_oid($seq);
-		open(OUT,">>$output_dir/$family_newCDS.fasta")|| die "Can't open $output_dir/$family_newCDS.fasta for writing : $!\n";
-		print OUT ">".$seq."\n".$gene->{"protein"}."\n";
+		my $gene = $analysis->MRC::DB::find_gene_by_gene_oid($seq);
+		open(OUT,">>$output_dir/$family"."_newCDS.fasta")|| die "Can't open $output_dir/$family"."_newCDS.fasta for writing : $!\n";
+		print OUT ">".$seq."\n".$gene->get_column('protein')."\n";
 		close(OUT);
-		$analysis->insert_familymember($family, $seq);
+		$analysis->MRC::DB::insert_familymember($family, $seq);
 	}
 	close(IN);
 }
@@ -109,11 +110,11 @@ sub insert_fc{
 	my $description   = $args{description};
 	my $name   = $args{name};
 	my $analysis = MRC->new();
-	$analysis->set_dbi_connection($db_pointer);
+	$analysis->set_dbi_connection($db);
 	$analysis->set_username($username);
 	$analysis->set_password($password);
 	$analysis->build_schema();
-	$analysis->insert_family_construction($description,$name,$author);
+	$analysis->MRC::DB::insert_family_construction($description,$name,$author);
 	return 1;
 }
 
@@ -134,7 +135,6 @@ sub count_all_CDS{
 	my $count_statement = "SELECT COUNT(g.gene_oid) FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
 	$count_statement .= "NOT " unless $old;
 	$count_statement .= "IN (SELECT f.gene_oid FROM familymembers f)";
-	print STDERR "prepare_statement: $prepare_statement\n";
 	my $count_query = $DB->prepare($count_statement);
 	$count_query->execute();
 	my $total_seqs = $count_query->fetchrow();
@@ -364,11 +364,6 @@ sub add_new_genes {
 			);
 			if ( $info{"type"} eq 'CDS' ) {
 				$count++;
-				if ( $count % $DIV_SIZE == 0 ) {
-					close(OUT);
-					$div++;
-					open( OUT, ">$new_cds_dump_dir/"."newCDS_$div.fasta" ) || die "Can't open $new_cds_dump_dir/"."newCDS_$div.fasta for writing: $!\n";
-				}
 				print OUT ">$gene_oid\n".$pmap{$gene_oid}->{"seq"}."\n";
 			}
 		}
@@ -434,3 +429,4 @@ sub build_sequence_map {
 	return \%map;
 }
 
+1;
