@@ -50,13 +50,13 @@ if ( !defined($password) ) {
 }
 
 #first thing, create a familyconstruction row
-Sfam_updater::DB_op::insert_fc(
-								username    => $username,
-								password    => $password,
-								db          => $DB_pointer,
-								author      => $author,
-								description => $description,
-								name        => $name
+my $family_construction_id = Sfam_updater::DB_op::insert_fc(
+															 username    => $username,
+															 password    => $password,
+															 db          => $DB_pointer,
+															 author      => $author,
+															 description => $description,
+															 name        => $name
 );
 
 # Read IMG excel spreadsheet and download new genomes
@@ -212,6 +212,7 @@ unless ($skip_sifting) {
 	my $blast_results_core = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/blast_results/blast_output";
 
 	#	my $blast_seqs_lengths = Sfam_updater::launch_sifting::compile_sequence_length_hash( file2 => $core_file_to_blast );
+
 	#my $mcl_file = Sfam_updater::launch_sifting::parse_blast(
 	#														  output_dir         => "$tmp_data/MCL",
 	#														  blast_results_core => $blast_results_core,
@@ -244,9 +245,23 @@ unless ($skip_sifting) {
 	#										   password => $password,
 	#										   output   => $tmp_data."/new_fams",
 	#);
-	
-	         # Seqs have been split by fam_ids.  Need to align
-	         #De novo alignment for $tmp_data/new_fams files
+
+	# Seqs have been split by fam_ids.  Need to align
+	#De novo alignment for $tmp_data/new_fams files
+	$family_construction_id = 23;
+	my $mcl_file = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL_input/mcl_input.abc";
+	my $representatives_dir = Sfam_updater::DB_op::prep_families_for_representative_picking(
+		db               => $DB_pointer,
+		username         => $username,
+		password         => $password,
+		output_directory => $tmp_data."/new_fams",
+		fc_id            => $family_construction_id,
+		mcl_input        => $mcl_file,
+		rep_threshold    => 30,
+
+	);
+	Sfam_updater::launch_sifting::fine_tune_representative_picking(blast_dir => $representatives_dir);
+	exit;
 
 	#	Sfam_updater::launch_sifting::build_aln_hmm_trees( directory => $tmp_data."/old_fams",
 	#											repo      => $data_repo,

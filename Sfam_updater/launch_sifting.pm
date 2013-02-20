@@ -323,10 +323,10 @@ sub parse_mcl {
 	my $db              = $args{db};
 	my $username        = $args{username};
 	my $password        = $args{password};
-	my $output_dir   = $args{output_dir};
+	my $output_dir      = $args{output_dir};
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
-	my $analysis        = MRC->new();
+	my $analysis = MRC->new();
 	$analysis->set_dbi_connection($db);
 	$analysis->set_username($username);
 	$analysis->set_password($password);
@@ -335,27 +335,26 @@ sub parse_mcl {
 	open( FAM_MAPPING, ">$output_dir/mcl_newCDS_to_fam.map" ) || "Can't open $output_dir/mcl_newCDS_to_fam.map for writing: $!\n";
 	my $familyconstruction_id = $analysis->MRC::DB::get_max_familyconstruction_id();
 	print STDERR "Family construction ID used : $familyconstruction_id\n";
+
 	while (<MCL_IN>) {
-	    chomp($_);
+		chomp($_);
 		my @gene_oids = split( /\t/, $_ );      #1 family per line, gene_oids separated by tabs
 		my $family_size = scalar(@gene_oids);
-	    next if $family_size <= 1; #ignore singletons
+		next if $family_size <= 1;              #ignore singletons
 		my (
-			$fam_alt_id, $name,
-			$description,   $alnpath,          $seed_alnpath, $hmmpath,
-			$reftree,       $alltree,          $universality,
-			$evenness,      $arch_univ,        $bact_univ,    $euk_univ,
-			$unknown_genes, $pathogen_percent, $aquatic_percent
+			 $fam_alt_id, $name,          $description,      $alnpath,  $seed_alnpath, $hmmpath,
+			 $reftree,    $alltree,       $universality,     $evenness, $arch_univ,    $bact_univ,
+			 $euk_univ,   $unknown_genes, $pathogen_percent, $aquatic_percent
 		  )
 		  = undef;
 		$analysis->MRC::DB::insert_family(
-								  $familyconstruction_id, $fam_alt_id,       $name,      $description, $alnpath,
-								  $seed_alnpath,          $hmmpath,          $reftree,   $alltree,     $family_size,
-								  $universality,          $evenness,         $arch_univ, $bact_univ,   $euk_univ,
-								  $unknown_genes,         $pathogen_percent, $aquatic_percent
+										   $familyconstruction_id, $fam_alt_id,       $name,      $description, $alnpath,
+										   $seed_alnpath,          $hmmpath,          $reftree,   $alltree,     $family_size,
+										   $universality,          $evenness,         $arch_univ, $bact_univ,   $euk_univ,
+										   $unknown_genes,         $pathogen_percent, $aquatic_percent
 		);
 		my $family_ID = $analysis->MRC::DB::get_max_famid();
-		foreach my $seqID (@gene_oids){
+		foreach my $seqID (@gene_oids) {
 			print FAM_MAPPING $seqID."\t".$family_ID."\n";
 		}
 	}
@@ -367,6 +366,45 @@ sub parse_mcl {
 	#use famiID to write out familymembers to file
 	# return mapping filename
 	return "$output_dir/mcl_newCDS_to_fam.map";
+}
+
+sub fine_tune_representative_picking {
+	my %args      = @_;
+	my $blast_dir = $args{blast_dir};
+	my @files     = <$blast_dir/*.abc>;
+	foreach my $file (@files) {
+		next if $file !~ m/\/(\d+).abc/;
+		my $core = $1;
+		if ( !-z $file ) {
+			if ( !-e "$blast_dir/$core.mcl.log" ) {
+				print "Initializing reps for $core\n";
+				`perl Sfam_updater/pick_rep_by_mcl.pl -i $blast_dir/$core.abc -o $blast_dir/$core.mcl -c 99`;
+			}
+			print "Done initializing reps $core\n";
+			my $rep_count = 10000;
+			while ( $rep_count > 250 ) {
+				open( inFILE, "$blast_dir/$core.mcl.log" );
+				while (<inFILE>) {
+					if ( $_ =~ m/number_of_rep/ ) {
+
+						#do nothing
+					} elsif ( $_ =~ m/Final: (\d+)\s+(\d+)/ ) {
+						$rep_count = $1;
+						my $cutoff = $2;
+						if ( $rep_count > 1500 ) {
+							$cutoff = $cutoff - 5;
+						} elsif ( $rep_count < 250 ) {
+							print "Reps # under the cutoff, skipping\n";
+							next;
+						} else {
+							$cutoff = $cutoff - 1;
+						}
+						`perl Sfam_updater/pick_rep_by_mcl.pl -i $blast_dir/$core.parsed -o $blast_dir/$core.mcl -c 99`;
+					}
+				}
+			}
+		}
+	}
 }
 
 sub launch_mcl {
@@ -657,31 +695,31 @@ $lastal_cmd
 	return "$output_dir/last_sift.ouput";
 }
 
-sub build_aln_hmm_trees{
-	my %args = @_;
-	my $type = $args{type};
-	my $directory = $args{directory};
-	my $output_dir = $args{output};
-	my $error_dir = $args{error};
-	my $total_jobs = $args{total_jobs};
+sub build_aln_hmm_trees {
+	my %args            = @_;
+	my $type            = $args{type};
+	my $directory       = $args{directory};
+	my $output_dir      = $args{output};
+	my $error_dir       = $args{error};
+	my $total_jobs      = $args{total_jobs};
 	my $data_repository = $args{repo};
 	##if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
 	print $directory."/*_$type"."CDS.fasta\n";
-	my @files = glob($directory."/*_$type"."CDS.fasta");
+	my @files = glob( $directory."/*_$type"."CDS.fasta" );
 	##if the error_dir does not exists create it.
 	print "Creating $error_dir\n" unless -e $error_dir;
 	`mkdir -p $error_dir`         unless -e $error_dir;
-	my $low_file = undef;
+	my $low_file  = undef;
 	my $high_file = 0;
-	foreach my $file (@files){
+	foreach my $file (@files) {
 		$file =~ m/\/(\d+)_.*CDS.fasta/;
-		$low_file =$1 if(!defined $low_file);
-		$low_file = $1 if $low_file > $1;
+		$low_file  = $1 if ( !defined $low_file );
+		$low_file  = $1 if $low_file > $1;
 		$high_file = $1 if $high_file < $1;
 	}
-	my $end_array_job = $low_file+$total_jobs-1;
+	my $end_array_job = $low_file + $total_jobs - 1;
 	my $cmd = "perl external_software_launcher.pl $type \$SGE_TASK_ID $high_file $total_jobs $directory _$type"."CDS.fasta $output_dir $data_repository";
 	print "$cmd\n";
 	print "Lowfile :$low_file\tHigh file : $high_file\n";
@@ -716,7 +754,8 @@ $cmd
 		}
 	}
 	return 1;
-	#for(my $i = 1; $i <= $step; $i++){	
+
+	#for(my $i = 1; $i <= $step; $i++){
 	#}
 }
 

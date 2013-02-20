@@ -86,6 +86,7 @@ sub insert_familymembers{
 	$analysis->build_schema();
 	print STDERR "Inside insert family member\n";
 	open(IN, $input_file) or die "Can't open $input_file for reading: $!\n";
+	my %family_sizes = ();
 	while(<IN>){
 		chomp($_);
 		next if  $_ =~ m/^#/;
@@ -114,9 +115,57 @@ sub insert_fc{
 	$analysis->set_username($username);
 	$analysis->set_password($password);
 	$analysis->build_schema();
-	$analysis->MRC::DB::insert_family_construction($description,$name,$author);
-	return 1;
+	my $fc = $analysis->MRC::DB::insert_family_construction($description,$name,$author);
+	return $fc->get_column('familyconstruction_id');
 }
+
+sub prep_families_for_representative_picking{
+	my %args = @_;
+	my $fci = $args{fc_id}; 
+	my $mcl_input = $args{mcl_input};
+	my $rep_threshold = $args{rep_threshold};
+	my $output_dir = $args{output_directory}."/representatives";
+	my $db         = $args{db};
+	my $username   = $args{username};
+	my $password   = $args{password};
+	my $analysis = MRC->new();
+	$analysis->set_dbi_connection($db);
+	$analysis->set_username($username);
+	$analysis->set_password($password);
+	$analysis->build_schema();
+	##if the output_dir does not exists create it.
+	print "Creating $output_dir\n" unless -e $output_dir;
+	`mkdir -p $output_dir`         unless -e $output_dir;
+	print "Prepping for the rep picks\n";
+	my $results = $analysis->MRC::DB::get_family_by_fci($fci);
+	##populate the family composition hash
+	my %families = ();
+	while(my $result = $results->next()){
+		next if $result->get_column('size') < $rep_threshold;
+		my $seqs = $analysis->MRC::DB::get_family_members_by_famid($result->get_column('famid'));
+		while(my $seq = $seqs->next()){
+			$families{$seq->get_column('gene_oid')} = $seq->get_column('famid');
+		}
+		print $result->get_column('famid')."\t".$result->get_column('size')."\n";
+	}
+	open(IN,"$mcl_input");
+	print STDERR "Reading $mcl_input\n";
+	while(<IN>){
+		chomp($_);
+		$_ =~ m/^(\S+)\s+(\S+)\s+(\S+)$/;
+		if(exists $families{$1} && exists $families{$2}){
+			if($families{$1} == $families{$2}){
+				open(OUT,">>$output_dir/$families{$1}.abc");
+				my $num = $3 * 100; #multiplying by 100 so rep picking works
+				print OUT $1."\t".$2."\n".$num."\n";
+				close(OUT);
+			}
+		}
+	}
+	close(IN);
+	return $output_dir;
+}
+
 
 sub count_all_CDS{
 	my %args       = @_;

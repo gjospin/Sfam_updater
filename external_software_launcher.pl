@@ -1,16 +1,16 @@
 #!/usr/bin/perl -w
-
 use strict;
 use warnings;
 
-my $type       = shift;
-my $low_bound  = shift;
-my $high_bound = shift;
-my $step       = shift;
-my $directory  = shift; #where to find the new family sequences (.fasta files)
-my $suffix     = shift;
-my $output_dir = shift;
+my $type        = shift;
+my $low_bound   = shift;
+my $high_bound  = shift;
+my $step        = shift;
+my $directory   = shift;    #where to find the new family sequences (.fasta files)
+my $suffix      = shift;
+my $output_dir  = shift;
 my $ref_hmm_dir = shift;
+
 print "Launching $type $low_bound $high_bound $step\n";
 
 my $tree_dir = $output_dir."/trees";
@@ -33,22 +33,28 @@ print "Creating $aln_dir\n" unless -e $aln_dir;
 if ( $type eq 'new' ) {
 	for ( my $i = $low_bound; $i <= $high_bound; $i = $i + $step ) {
 		print "processing family : $i\t$directory/$i$suffix\n";
-		
+
+		my $family_size = get_family_size_by_grep( family => "$directory/$i$suffix" );
 		if ( -e "$directory/$i$suffix" ) {
-			##align the fasta file
-			`muscle -in $directory/$i$suffix -out $aln_dir/$i.aln` unless -e "$directory/$i.aln";
-			##HMM of the alignment file
-			if (-e "$hmm_dir/$i.hmm.gz" && !-e "$hmm_dir/$i.hmm"){
-				##gunzip the file
-				`gunzip $hmm_dir/$i.hmm.gz`;
+			if ( -e "$directory/representatives/$i.reps$suffix" ) {
+				#fetch the all versus all results file
+			} else {
+
+				##align the fasta file
+				`muscle -in $directory/$i$suffix -out $aln_dir/$i.aln` unless -e "$directory/$i.aln";
+				##HMM of the alignment file
+				if ( -e "$hmm_dir/$i.hmm.gz" && !-e "$hmm_dir/$i.hmm" ) {
+					##gunzip the file
+					`gunzip $hmm_dir/$i.hmm.gz`;
+				}
+				`hmmbuild --informat afa $hmm_dir/$i.hmm $aln_dir/$i.aln` unless -e "$hmm_dir/$i.hmm";
+				if ( -e "$hmm_dir/$i.hmm" && !-e "$hmm_dir/$i.hmm.gz" ) {
+					##zip the file
+					`gzip $hmm_dir/$i.hmm`;
+				}
+				##Tree of the alignment
+				`fasttree $aln_dir/$i.aln > $tree_dir/$i.tree` unless -e "$tree_dir/$i.tree";
 			}
-			`hmmbuild --informat afa $hmm_dir/$i.hmm $aln_dir/$i.aln` unless -e "$hmm_dir/$i.hmm";
-			if (-e "$hmm_dir/$i.hmm" && !-e "$hmm_dir/$i.hmm.gz"){
-				##zip the file
-				`gzip $hmm_dir/$i.hmm`;
-			}
-			##Tree of the alignment
-			`fasttree $aln_dir/$i.aln > $tree_dir/$i.tree` unless -e "$tree_dir/$i.tree";
 		}
 	}
 } elsif ( $type eq 'old' ) {
@@ -62,4 +68,18 @@ if ( $type eq 'new' ) {
 	}
 } else {
 	die "Command $type not recognized\n";
+}
+
+sub get_family_size_by_sql {
+	my %args   = @_;
+	my $fam_id = $args{famid};
+
+	#my $family = $analysis->MRC::DB::get_family_from_famid($fam_id);
+	#return $family>get_column('size');
+}
+
+sub get_family_size_by_grep {
+	my %args = @_;
+	my $fam  = $args{family};
+	return `grep -c '>' $fam`;
 }
