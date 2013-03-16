@@ -172,18 +172,19 @@ unless ($skip_sifting) {
 	#																		  error_dir  => "$tmp_data/hmmsearch_sift_err",
 	#																		  threads => $threads,
 	#);
-	$hmmsearch_results_core = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/hmmsearch_sift_output/hmmsearch_sift.output";
-
-	#my $hmmsearch_new_family_members = Sfam_updater::launch_sifting::parse_hmmsearch(filename_core => $hmmsearch_results_core,
-	#	output_dir    => "$tmp_data/hmmsearch_sift_output",
-	#	);
+	#$hmmsearch_results_core = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/hmmsearch_sift_output/hmmsearch_sift.output";
+	$hmmsearch_results_core = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/hmmsearch_sift_output/hmmsearch_sift.output";
+	my $hmmsearch_new_family_members = Sfam_updater::launch_sifting::parse_hmmsearch(filename_core => $hmmsearch_results_core,
+		output_dir    => "$tmp_data/hmmsearch_sift_output",
+		);
 	#Sfam_updater::DB_op::insert_familymembers(
-	#											 family_members_file => $hmmsearch_new_family_members,
+	#											 input => $hmmsearch_new_family_members,
 	#											 db                  => $DB_pointer,
 	#											 username            => $username,
 	#											 password            => $password,
-	#											output_dir => $tmp_data."/old_fams",
+	#											output => $tmp_data."/old_fams",
 	#);
+	#exit;
 	#
 	#$core_file_to_blast = Sfam_updater::DB_op::gather_CDS(
 	#																				output_dir => "$tmp_data/blast_input",
@@ -250,42 +251,85 @@ unless ($skip_sifting) {
 	#De novo alignment for $tmp_data/new_fams files
 	$family_construction_id = 23;
 	my $mcl_file = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL_input/mcl_input.abc";
-	my $representatives_dir = Sfam_updater::DB_op::prep_families_for_representative_picking(
-		db               => $DB_pointer,
-		username         => $username,
-		password         => $password,
-		output_directory => $tmp_data."/new_fams",
-		fc_id            => $family_construction_id,
-		mcl_input        => $mcl_file,
-		rep_threshold    => 30,
 
-	);
-	Sfam_updater::launch_sifting::fine_tune_representative_picking(blast_dir => $representatives_dir);
+	#my $representatives_dir = Sfam_updater::DB_op::prep_families_for_representative_picking(
+	#	db               => $DB_pointer,
+	#	username         => $username,
+	#	password         => $password,
+	#	output_directory => $tmp_data."/new_fams",
+	#	fc_id            => $family_construction_id,
+	#	mcl_input        => $mcl_file,
+	#	rep_threshold    => 30,
+	#
+	#);
+	my $representatives_dir = $tmp_data."/new_fams/representatives";
+
+	#Sfam_updater::launch_sifting::fine_tune_representative_picking( blast_dir => $representatives_dir );
+	#Sfam_updater::DB_op::generate_representative_fasta(
+	#													representative_dir => $representatives_dir,
+	#													output_dir => $representatives_dir,
+	#													db         => $DB_pointer,
+	#													username   => $username,
+	#													password   => $password,
+	#);
+	#exit;
+
+	my $old_fam_dir	=Sfam_updater::launch_sifting::build_aln_hmm_trees( directory => $tmp_data."/old_fams",
+												repo      => $data_repo,
+												total_jobs => 200,
+												type => 'old',
+												output => $tmp_data."old_fams",
+												error => $tmp_data."aln_hmm_trees_old",
+												 );
 	exit;
-
-	#	Sfam_updater::launch_sifting::build_aln_hmm_trees( directory => $tmp_data."/old_fams",
-	#											repo      => $data_repo,
-	#											total_jobs => 200,
-	#											type => 'old',
-	#											output => $tmp_data."old_fams",
-	#											error => $tmp_data."aln_hmm_trees_old",
-	#											 );
 	#De novo alignment for $tmp_data/new_fams files
-	Sfam_updater::launch_sifting::build_aln_hmm_trees(
-													   directory  => $tmp_data."/new_fams",
-													   repo       => $data_repo,
-													   total_jobs => 200,
-													   type       => 'new',
-													   output     => $tmp_data."new_fams",
-													   error      => $tmp_data."aln_hmm_trees_new",
+	#my $new_fam_dir = Sfam_updater::launch_sifting::build_aln_hmm_trees(
+	#																	 directory  => $tmp_data."/new_fams",
+	#																	 repo       => $data_repo,
+	#																	 total_jobs => 200,
+	#																	 type       => 'new',
+	#																	 output     => $tmp_data."new_fams",
+	#																	 error      => $tmp_data."aln_hmm_trees_new",
+	#);
+	## Insert tree into DB
+	my $new_fam_dir;
+	Sfam_updater::DB_op::insert_trees(
+									   directory => $new_fam_dir,
+									   db        => $DB_pointer,
+									   username  => $username,
+									   password  => $password,
+									   tree_desc => "Tree build for new families for fci $family_construction_id",
+									   tree_type => "alltree",
+									   tree_path => "/trees",
 	);
 
-	# Insert tree into DB
+	#Sfam_updater::DB_op::insert_trees(
+	#								   directory => $old_fam_dir,
+	#								   db        => $DB_pointer,
+	#								   username  => $username,
+	#								   password  => $password,
+	#								   tree_desc => "Tree build for old families for fci $family_construction_id",
+	#								   tree_type => "alltree",
+	#								   tree_path => "/trees";
+	#);
+
 	# Insert alignment into DB
+	Sfam_updater::DB_op::insert_alignments(
+											directory => $new_fam_dir,
+											db        => $DB_pointer,
+											username  => $username,
+											password  => $password,
+											tree_desc => "Tree build for new families for fci $family_construction_id",
+											tree_type => "alltree",
+											tree_path => "/trees",
+	);
+
 	# Insert hmm into DB
 	# Insert seed hmm into DB for new families
 
 	# package update / Release.
+	## move everything from the old DB into a subdirectory.
+	## populate "current" DB release directory with new data.
 }
 
 exit;

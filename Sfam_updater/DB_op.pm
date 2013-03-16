@@ -29,20 +29,21 @@ sub gather_CDS {
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir $output_dir`            unless -e $output_dir;
 
-	my $DB = DBI->connect( $db, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
-	my $count_statement = "SELECT COUNT(g.gene_oid) FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
+	my $DB                = DBI->connect( $db, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
+	my $count_statement   = "SELECT COUNT(g.gene_oid) FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
 	my $prepare_statement = "SELECT g.gene_oid, g.protein FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
 	$prepare_statement .= "NOT " unless $old;
 	$prepare_statement .= "IN (SELECT f.gene_oid FROM familymembers f)";
 	print STDERR "prepare_statement: $prepare_statement\n";
 	my $query = $DB->prepare($prepare_statement);
 	$query->execute();
-	my $total_seqs = count_all_CDS(	old        => 0,
-									db         => $db,
-									username   => $username,
-									password   => $password,
+	my $total_seqs = count_all_CDS(
+									old      => 0,
+									db       => $db,
+									username => $username,
+									password => $password,
 	);
-	my $div_size = int($total_seqs / 14);
+	my $div_size    = int( $total_seqs / 14 );
 	my $count       = 0;
 	my $div         = 1;
 	my $output_file = $output_dir."/";
@@ -68,14 +69,14 @@ sub gather_CDS {
 	return $file_core;
 }
 
-
-sub insert_familymembers{
-	my %args = @_;
+sub insert_familymembers {
+	my %args       = @_;
 	my $input_file = $args{input};
 	my $db         = $args{db};
 	my $username   = $args{username};
 	my $password   = $args{password};
 	my $output_dir = $args{output};
+
 	#if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
@@ -85,50 +86,108 @@ sub insert_familymembers{
 	$analysis->set_password($password);
 	$analysis->build_schema();
 	print STDERR "Inside insert family member\n";
-	open(IN, $input_file) or die "Can't open $input_file for reading: $!\n";
+	open( IN, $input_file ) or die "Can't open $input_file for reading: $!\n";
 	my %family_sizes = ();
-	while(<IN>){
+
+	while (<IN>) {
 		chomp($_);
-		next if  $_ =~ m/^#/;
-		my @line = split(/\t/,$_);
-		my $seq = $line[0];
+		next if $_ =~ m/^#/;
+		my @line   = split( /\t/, $_ );
+		my $seq    = $line[0];
 		my $family = $line[1];
-		my $gene = $analysis->MRC::DB::find_gene_by_gene_oid($seq);
-		open(OUT,">>$output_dir/$family"."_newCDS.fasta")|| die "Can't open $output_dir/$family"."_newCDS.fasta for writing : $!\n";
+		my $gene   = $analysis->MRC::DB::find_gene_by_gene_oid($seq);
+		open( OUT, ">>$output_dir/$family"."_newCDS.fasta" ) || die "Can't open $output_dir/$family"."_newCDS.fasta for writing : $!\n";
 		print OUT ">".$seq."\n".$gene->get_column('protein')."\n";
 		close(OUT);
-		$analysis->MRC::DB::insert_familymember($family, $seq);
+		$analysis->MRC::DB::insert_familymember( $family, $seq );
 	}
 	close(IN);
 }
 
-sub insert_fc{
-	my %args = @_;
-	my $db         = $args{db};
-	my $username   = $args{username};
-	my $password   = $args{password};
-	my $author         = $args{author};
-	my $description   = $args{description};
-	my $name   = $args{name};
+sub insert_fc {
+	my %args        = @_;
+	my $db          = $args{db};
+	my $username    = $args{username};
+	my $password    = $args{password};
+	my $author      = $args{author};
+	my $description = $args{description};
+	my $name        = $args{name};
+	my $analysis    = MRC->new();
+	$analysis->set_dbi_connection($db);
+	$analysis->set_username($username);
+	$analysis->set_password($password);
+	$analysis->build_schema();
+	my $fc = $analysis->MRC::DB::insert_family_construction( $description, $name, $author );
+	return $fc->get_column('familyconstruction_id');
+}
+
+sub insert_trees {
+	my %args     = @_;
+	my $tree_dir = $args{directory}."/trees";
+	my $db       = $args{db};
+	my $treedesc = $args{tree_desc};
+	my $treetype = $args{tree_type};
+	my $treepath = $args{tree_path};
+	my $username = $args{username};
+	my $password = $args{password};
 	my $analysis = MRC->new();
 	$analysis->set_dbi_connection($db);
 	$analysis->set_username($username);
 	$analysis->set_password($password);
 	$analysis->build_schema();
-	my $fc = $analysis->MRC::DB::insert_family_construction($description,$name,$author);
-	return $fc->get_column('familyconstruction_id');
+
+	my @trees = <$tree_dir/*.tree>;
+	foreach my $tree (@trees) {
+		my $tree =~ m/\/(\d+).tree/;
+		my $famID         = $1;
+		my $treepath_full = $treepath."/$famID.tree";
+		my $tree_row      = $analysis->MRC::DB::insert_tree( $treedesc, $treepath_full, $treetype );
+		my $treeID        = $tree_row->get_column('treeid');
+		$analysis->MRC::DB::insert_tree_into_family( $treeID, $famID );
+	}
+	return 1;
 }
 
-sub prep_families_for_representative_picking{
-	my %args = @_;
-	my $fci = $args{fc_id}; 
-	my $mcl_input = $args{mcl_input};
-	my $rep_threshold = $args{rep_threshold};
-	my $output_dir = $args{output_directory}."/representatives";
-	my $db         = $args{db};
-	my $username   = $args{username};
-	my $password   = $args{password};
+sub generate_representative_fasta {
+	my %args     = @_;
+	my $db       = $args{db};
+	my $username = $args{username};
+	my $password = $args{password};
 	my $analysis = MRC->new();
+	$analysis->set_dbi_connection($db);
+	$analysis->set_username($username);
+	$analysis->set_password($password);
+	$analysis->build_schema();
+	my $output_dir = $args{output_dir};
+	my $rep_dir    = $args{representative_dir};
+
+	my @mcl_files = <$rep_dir/*.mcl>;
+	foreach my $file (@mcl_files) {
+		next unless -s $file;
+		$file =~ m/\/(\d+).mcl/;
+		open( IN,  $file );
+		open( OUT, ">$output_dir/$1.rep.fasta" );
+		while (<IN>) {
+			chomp($_);
+			print "grabbing gene_oid $_\n";
+			my $gene = $analysis->MRC::DB::find_gene_by_gene_oid($_);
+			print OUT ">".$_."\n".$gene->get_column('protein')."\n";
+		}
+		close(IN);
+		close(OUT);
+	}
+}
+
+sub prep_families_for_representative_picking {
+	my %args          = @_;
+	my $fci           = $args{fc_id};
+	my $mcl_input     = $args{mcl_input};
+	my $rep_threshold = $args{rep_threshold};
+	my $output_dir    = $args{output_directory}."/representatives";
+	my $db            = $args{db};
+	my $username      = $args{username};
+	my $password      = $args{password};
+	my $analysis      = MRC->new();
 	$analysis->set_dbi_connection($db);
 	$analysis->set_username($username);
 	$analysis->set_password($password);
@@ -140,23 +199,23 @@ sub prep_families_for_representative_picking{
 	my $results = $analysis->MRC::DB::get_family_by_fci($fci);
 	##populate the family composition hash
 	my %families = ();
-	while(my $result = $results->next()){
+	while ( my $result = $results->next() ) {
 		next if $result->get_column('size') < $rep_threshold;
-		my $seqs = $analysis->MRC::DB::get_family_members_by_famid($result->get_column('famid'));
-		while(my $seq = $seqs->next()){
-			$families{$seq->get_column('gene_oid')} = $seq->get_column('famid');
+		my $seqs = $analysis->MRC::DB::get_family_members_by_famid( $result->get_column('famid') );
+		while ( my $seq = $seqs->next() ) {
+			$families{ $seq->get_column('gene_oid') } = $seq->get_column('famid');
 		}
 		print $result->get_column('famid')."\t".$result->get_column('size')."\n";
 	}
-	open(IN,"$mcl_input");
+	open( IN, "$mcl_input" );
 	print STDERR "Reading $mcl_input\n";
-	while(<IN>){
+	while (<IN>) {
 		chomp($_);
 		$_ =~ m/^(\S+)\s+(\S+)\s+(\S+)$/;
-		if(exists $families{$1} && exists $families{$2}){
-			if($families{$1} == $families{$2}){
-				open(OUT,">>$output_dir/$families{$1}.abc");
-				my $num = $3 * 100; #multiplying by 100 so rep picking works
+		if ( exists $families{$1} && exists $families{$2} ) {
+			if ( $families{$1} == $families{$2} ) {
+				open( OUT, ">>$output_dir/$families{$1}.abc" );
+				my $num = $3 * 100;    #multiplying by 100 so rep picking works
 				print OUT $1."\t".$2."\n".$num."\n";
 				close(OUT);
 			}
@@ -166,8 +225,7 @@ sub prep_families_for_representative_picking{
 	return $output_dir;
 }
 
-
-sub count_all_CDS{
+sub count_all_CDS {
 	my %args       = @_;
 	my $output_dir = $args{output_dir};
 	my $db         = $args{db};
@@ -191,34 +249,35 @@ sub count_all_CDS{
 }
 
 sub add_new_family_members {
-	my %args = @_;
+	my %args             = @_;
 	my $fam_members_file = $args{family_members_file};
-	my $username = $args{username};
-	my $password = $args{password};
-	my $db_pointer = $args{db};
-	my $analysis = MRC->new();
+	my $username         = $args{username};
+	my $password         = $args{password};
+	my $db_pointer       = $args{db};
+	my $analysis         = MRC->new();
 	$analysis->set_dbi_connection($db_pointer);
 	$analysis->set_username($username);
 	$analysis->set_password($password);
 	$analysis->build_schema();
-	open(IN,$fam_members_file) || die "Couldn't open $fam_members_file for reading : $!\n";
-	while(<IN>){
-		next if $_ =~ /#/; #skip if there is a header;
+	open( IN, $fam_members_file ) || die "Couldn't open $fam_members_file for reading : $!\n";
+
+	while (<IN>) {
+		next if $_ =~ /#/;    #skip if there is a header;
 		$_ =~ m/^(\d+)\s+(\d+)/;
 		my $new_Seq = $1;
-		my $family = $2;
-		$analysis->insert_familymember($family,$new_Seq);
-	}	
+		my $family  = $2;
+		$analysis->insert_familymember( $family, $new_Seq );
+	}
 
 	close(IN);
 }
 
-sub get_all_famid{
-	my %args = @_;
-	my $username = $args{username};
-	my $password = $args{password};
-	my $db_pointer = $args{db};
-	my $DB = DBI->connect( $db_pointer, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
+sub get_all_famid {
+	my %args        = @_;
+	my $username    = $args{username};
+	my $password    = $args{password};
+	my $db_pointer  = $args{db};
+	my $DB          = DBI->connect( $db_pointer, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
 	my $results_ref = $DB->selectall_arrayref('SELECT famid FROM family WHERE 1');
 	return $results_ref;
 }
@@ -262,6 +321,20 @@ sub add_new_genomes {
 	}
 	close IN;
 	return \%return_gene_oids;
+}
+
+## Returns 1 if we should add the new genome to the DB
+## returns 0 if we should skip due to a genome already in the DB. Or the new genome is not as complete as an old one.
+sub is_ncbi_taxonid_already_in_DB {
+	my $analysis       = shift;
+	my $ncbi_taxon_oid = shift;
+	my $genomes        = $analysis->MRC::DB::get_genome_from_ncbi_taxon_oid($ncbi_taxon_oid);
+	my $return_value   = 1;
+	while ( my $genome = $genomes->next() ) {
+		$return_value = 0;
+		last;
+	}
+	return $return_value;
 }
 
 sub have_genes_been_added {

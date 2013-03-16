@@ -250,7 +250,7 @@ sub parse_hmmsearch {
 	foreach my $new_seq ( keys %top_both ) {
 
 		#insert the new family members
-		print OUT "$new_seq\t\$top_both{$new_seq}[0]\n";
+		print OUT "$new_seq\t$top_both{$new_seq}[0]\n";
 
 		#Sfam_updater::DB_op::insert_new_familymembers(seq_oid => $new_seq, family => $family);
 	}
@@ -706,8 +706,8 @@ sub build_aln_hmm_trees {
 	##if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
-	print $directory."/*_$type"."CDS.fasta\n";
-	my @files = glob( $directory."/*_$type"."CDS.fasta" );
+	print $directory."/*_new"."CDS.fasta\n";
+	my @files = glob( $directory."/*_new"."CDS.fasta" );
 	##if the error_dir does not exists create it.
 	print "Creating $error_dir\n" unless -e $error_dir;
 	`mkdir -p $error_dir`         unless -e $error_dir;
@@ -720,7 +720,7 @@ sub build_aln_hmm_trees {
 		$high_file = $1 if $high_file < $1;
 	}
 	my $end_array_job = $low_file + $total_jobs - 1;
-	my $cmd = "perl external_software_launcher.pl $type \$SGE_TASK_ID $high_file $total_jobs $directory _$type"."CDS.fasta $output_dir $data_repository";
+	my $cmd = "perl external_software_launcher.pl $type \$SGE_TASK_ID $high_file $total_jobs $directory _newCDS.fasta $output_dir $data_repository";
 	print "$cmd\n";
 	print "Lowfile :$low_file\tHigh file : $high_file\n";
 	open( OUT, ">$output_dir/build_aln_hmm_trees.sh" ) || die "Can't open $output_dir/build_aln_hmm_trees.sh for writing: $!\n";
@@ -753,7 +753,7 @@ $cmd
 			$flag = 0;
 		}
 	}
-	return 1;
+	return $output_dir;
 
 	#for(my $i = 1; $i <= $step; $i++){
 	#}
