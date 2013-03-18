@@ -160,6 +160,7 @@ sub insert_fc{
 	$analysis->set_password($password);
 	$analysis->build_schema();
 	my $fc = $analysis->MRC::DB::insert_family_construction($description,$name,$author);
+	print "Created a new familyconstruction_id: " . $fc->get_column('familyconstruction_id') . "\n";
 	return $fc->get_column('familyconstruction_id');
 }
 
@@ -316,7 +317,8 @@ sub add_new_genomes {
 	chomp($header);
 	my @cols = split( "\t", $header );
 	for ( my $i = 0; $i < scalar(@cols); $i++ ) {
-		$cols[$i] =~ s/\s+/_/g;
+	    $cols[$i] =~ s/\s+$//g;
+	    $cols[$i] =~ s/\s+/_/g;
 	}
 	my $count = 0;
 	while (<IN>) {
@@ -325,9 +327,12 @@ sub add_new_genomes {
 		my %genome = ();
 		for ( my $i = 0; $i < scalar(@data); $i++ ) {
 			my $key = $cols[$i];
-			$key =~ s/\s/\_/g;
+			$key =~ s/\s+/_/g;
 			my $value = $data[$i];
 			$genome{$key} = $value;
+			if( $key =~ "Gene" ){
+			    print $key . "\t" . $value . "\n";
+			}
 		}
 		print STDERR "Inserting ".$genome{"taxon_oid"}."\n";
 		$analysis->MRC::DB::insert_genome_from_hash( \%genome );

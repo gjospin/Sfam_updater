@@ -19,7 +19,7 @@ my (
 my $threads = 1;    #default hmmsearch_thread
 
 #my $DB_pointer  = "DBI:mysql:Sfams:lighthouse.ucsf.edu";
-my $DB_pointer = "DBI:mysql:Sfams";
+my $DB_pointer = "DBI:mysql:SFams";
 GetOptions(
 			"skip-download"   => \$skip_download,
 			"skip-index"      => \$skip_index,
@@ -64,30 +64,31 @@ my $family_construction_id = Sfam_updater::DB_op::insert_fc(
 # Extract (and index) new CDS
 
 unless ($skip_download) {
-
-	#	my $new_genome_oids_ref = Sfam_updater::DB_op::add_new_genomes(
-	#																	username    => $username,
-	#																	password    => $password,
-	#																	db          => $DB_pointer,
-	#																	genome_file => $genome_file
-	#	);
-	#	$new_genome_oids_ref = Sfam_updater::download_jgi_data::download_data(
-	#																		   username         => $username,
-	#																		   password         => $password,
-	#																		   db               => $DB_pointer,
-	#																		   db_master        => $genome_download_dir,
-	#																		   genome_oid_array => $new_genome_oids_ref,
-	#	);
-	#	Sfam_updater::DB_op::add_new_genes(
-	#										password         => $password,
-	#										db               => $DB_pointer,
-	#										file_repo        => $genome_download_dir,
-	#										genome_oid_array => $new_genome_oids_ref,
-	#										new_cds_dump_dir => $tmp_data,
-	#										db_master        => $genome_download_dir,
-	#	);
-
+    die "Please provide a directory path for the flat file repository that we'll dump downloaded data to using --download-dir\n" unless defined( $genome_download_dir );
+    my $new_genome_oids_ref = Sfam_updater::DB_op::add_new_genomes(
+	username    => $username,
+	password    => $password,
+	db          => $DB_pointer,
+	genome_file => $genome_file
+	);
+    $new_genome_oids_ref = Sfam_updater::download_jgi_data::download_data(
+	username         => $username,
+	password         => $password,
+	db               => $DB_pointer,
+	db_master        => $genome_download_dir,
+	genome_oid_array => $new_genome_oids_ref,
+	);
+    Sfam_updater::DB_op::add_new_genes(
+	password         => $password,
+	db               => $DB_pointer,
+	file_repo        => $genome_download_dir,
+	genome_oid_array => $new_genome_oids_ref,
+	new_cds_dump_dir => $tmp_data,
+	db_master        => $genome_download_dir,
+	);
 }
+
+exit(0);
 
 unless ($skip_index) {
 
