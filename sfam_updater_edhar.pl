@@ -174,9 +174,9 @@ unless ($skip_sifting) {
 	#);
 	#$hmmsearch_results_core = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/hmmsearch_sift_output/hmmsearch_sift.output";
 	$hmmsearch_results_core = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/hmmsearch_sift_output/hmmsearch_sift.output";
-	my $hmmsearch_new_family_members = Sfam_updater::launch_sifting::parse_hmmsearch(filename_core => $hmmsearch_results_core,
-		output_dir    => "$tmp_data/hmmsearch_sift_output",
-		);
+#	my $hmmsearch_new_family_members = Sfam_updater::launch_sifting::parse_hmmsearch(filename_core => $hmmsearch_results_core,
+#		output_dir    => "$tmp_data/hmmsearch_sift_output",
+#		);
 	#Sfam_updater::DB_op::insert_familymembers(
 	#											 input => $hmmsearch_new_family_members,
 	#											 db                  => $DB_pointer,
@@ -274,14 +274,14 @@ unless ($skip_sifting) {
 	#);
 	#exit;
 
-	my $old_fam_dir	=Sfam_updater::launch_sifting::build_aln_hmm_trees( directory => $tmp_data."/old_fams",
-												repo      => $data_repo,
-												total_jobs => 200,
-												type => 'old',
-												output => $tmp_data."old_fams",
-												error => $tmp_data."aln_hmm_trees_old",
-												 );
-	exit;
+#	my $old_fam_dir	=Sfam_updater::launch_sifting::build_aln_hmm_trees( directory => $tmp_data."/old_fams",
+#												repo      => $data_repo,
+#												total_jobs => 200,
+#												type => 'old',
+#												output => $tmp_data."old_fams",
+#												error => $tmp_data."aln_hmm_trees_old",
+#												 );
+#	exit;
 	#De novo alignment for $tmp_data/new_fams files
 	#my $new_fam_dir = Sfam_updater::launch_sifting::build_aln_hmm_trees(
 	#																	 directory  => $tmp_data."/new_fams",
@@ -292,8 +292,9 @@ unless ($skip_sifting) {
 	#																	 error      => $tmp_data."aln_hmm_trees_new",
 	#);
 	## Insert tree into DB
-	my $new_fam_dir;
-	Sfam_updater::DB_op::insert_trees(
+#	my $new_fam_dir = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_dir/test_dir/new_fams";
+	my $new_fam_dir = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/new_fams";
+	Sfam_updater::DB_op::insert_trees_hmms_alignments(
 									   directory => $new_fam_dir,
 									   db        => $DB_pointer,
 									   username  => $username,
@@ -301,6 +302,9 @@ unless ($skip_sifting) {
 									   tree_desc => "Tree build for new families for fci $family_construction_id",
 									   tree_type => "alltree",
 									   tree_path => "/trees",
+	    aln_path => "/alignments",
+	    seed_alignment_path => "/seed_alignments",
+	    hmm_path => "/HMMs",
 	);
 
 	#Sfam_updater::DB_op::insert_trees(
@@ -314,15 +318,20 @@ unless ($skip_sifting) {
 	#);
 
 	# Insert alignment into DB
-	Sfam_updater::DB_op::insert_alignments(
-											directory => $new_fam_dir,
-											db        => $DB_pointer,
-											username  => $username,
-											password  => $password,
-											tree_desc => "Tree build for new families for fci $family_construction_id",
-											tree_type => "alltree",
-											tree_path => "/trees",
-	);
+#	Sfam_updater::DB_op::insert_alignments(
+#	    directory => $new_fam_dir,
+#	    db        => $DB_pointer,
+#	    username  => $username,
+#	    password  => $password,
+#	    type=> "new",
+#	);
+#      Sfam_updater::DB_op::insert_alignments(
+#            directory => $old_fam_dir,
+#            db        => $DB_pointer,
+#            username  => $username,
+#            password  => $password,
+#	  type => "old",
+#	  );
 
 	# Insert hmm into DB
 	# Insert seed hmm into DB for new families
