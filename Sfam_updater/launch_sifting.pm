@@ -3,10 +3,13 @@ use strict;
 
 #use Sfam_updater::DB_op;
 use Bio::SeqIO;
+use IPC::System::Simple qw(capture $EXITVAL);
 use Carp;
+use Data::Dumper;
 
 my $LASTDB_SIZE    = "900M";
-my $SLEEP_DURATION = 300;
+my $SLEEP_DURATION = 30;
+my $MINI_SLEEP     = 0.5;
 my $DIV_SIZE       = 1000000;    #how many sequences will be written to 1 file for the sifting;
 
 # Need to launch the Lastal Sifting
@@ -415,6 +418,23 @@ sub launch_mcl {
 	my $mcl_params   = $args{mcl_params};
 	my $error_dir    = $args{error_dir};
 	my $threads      = $args{threads};
+	my $machine;
+	if( defined($args{machine})){
+	    $machine = $args{machine};
+	}
+
+	my $remote_output_dir = $output_dir;
+	if( $machine eq "chef" ){
+	    #convert the file paths from shattuck to chef paths. e.g.
+	    #/mnt/data/work/pollardlab
+	    #to
+	    #/pollard/shattuck0	    
+	    my $shattuck_path  = '/mnt/data/work/pollardlab/';
+	    my $chef_path      = '/pollard/shattuck0/';
+	    $input_file        = convert_local_path_to_remote( $input_file, $shattuck_path, $chef_path );
+	    $remote_output_dir = convert_local_path_to_remote( $remote_output_dir, $shattuck_path, $chef_path );
+	    $error_dir         = convert_local_path_to_remote( $error_dir, $shattuck_path, $chef_path );
+	}
 
 	#if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
@@ -430,20 +450,50 @@ sub launch_mcl {
 #\$ -e $error_dir/mcl_job.err
 #\$ -o $error_dir/mcl_job.out
 
+";
+
+	if( $machine eq "chef" ){ 
+	    print OUT "
+#\$ -l arch=linux-x64
+#\$ -l h_rt=0:30:0
+#\$ -l scratch=0.25G
+#\$ -r y
+#\$ -pe smp $threads
+
+";
+	}
+
+	print OUT "
+
 $mcl_cmd
 
 ";
 	close(OUT);
 	`chmod 755 $output_dir/mcl_job.sh`;
-	my $qsub_command = "qsub $queue_params -pe threaded $threads $output_dir/mcl_job.sh";
-	my $qsub         = `$qsub_command`;
+	my $qsub_command;
+	my $qsub;
+        #run the job
+	print "machine is $machine\n";
+	if( $machine eq "chef" ){
+	    $qsub_command = "qsub $queue_params $remote_output_dir/mcl_job.sh";
+	    my $verbose   = 0;
+	    print $qsub_command . "\n";
+	    $qsub   = execute_ssh_cmd( "chef.compbio.ucsf.edu" , $qsub_command, $verbose);
+	    (0 == $EXITVAL) or warn("Execution of command <$qsub_command> returned non-zero exit code $EXITVAL. The remote reponse was: $qsub.");
+	    print $qsub . "\n";
+	}
+	else{
+	    $qsub_command = "qsub $queue_params -pe threaded $threads $output_dir/mcl_job.sh";
+	    $qsub         = `$qsub_command`;
+	}
+
 	$qsub =~ /Your job (\d+) /;
 	my $job_id = $1;
 	my $flag   = 1;
 
 	while ($flag) {
 		sleep($SLEEP_DURATION);
-		my $output = `qstat -j $job_id 2>&1`;
+		my $output = `qstat -j $job_id`;
 		if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
 			$flag = 0;
 		}
@@ -503,37 +553,61 @@ sub parse_blast {
 }
 
 sub launch_blast {
-	my %args                   = @_;
-	my $blast_input_files_core = $args{blast_input_files_core};
-	my $arguments              = $args{arguments};
-	my $output_dir             = $args{output_dir};
-	my $error_dir              = $args{error_dir};
-	my $threads                = $args{threads};
-	my %job_ids                = ();
+    my %args                   = @_;
+    my $blast_input_files_core = $args{blast_input_files_core};
+    my $arguments              = $args{arguments};
+    my $output_dir             = $args{output_dir};
+    my $error_dir              = $args{error_dir};
+    my $threads                = $args{threads};
+    my $machine;
+    if( defined($args{machine})){
+	$machine = $args{machine};
+    }
+    
+    my %job_ids                = ();
+    
+    #if the output_dir does not exists create it.
+    print "Creating $output_dir\n" unless -e $output_dir;
+    `mkdir -p $output_dir`         unless -e $output_dir;
 
-	#if the output_dir does not exists create it.
-	print "Creating $output_dir\n" unless -e $output_dir;
-	`mkdir -p $output_dir`         unless -e $output_dir;
+    #if the $error_dir does not exists create it.
+    print "Creating $error_dir\n" unless -e $error_dir;
+    `mkdir -p $error_dir`         unless -e $error_dir;
+    my @files       = glob( $blast_input_files_core."*" );
+    my $file_number = scalar(@files);
+    print STDERR "$blast_input_files_core\n";
+    print STDERR "There are $file_number Blast files\n";
+    print "ARGUMENTS $arguments\n";
 
-	#if the $error_dir does not exists create it.
-	print "Creating $error_dir\n" unless -e $error_dir;
-	`mkdir -p $error_dir`         unless -e $error_dir;
-	my @files       = glob( $blast_input_files_core."*" );
-	my $file_number = scalar(@files);
-	print STDERR "$blast_input_files_core\n";
-	print STDERR "There are $file_number Blast files\n";
-	print "ARGUMENTS $arguments\n";
-	my $count = 0;
+    my $remote_output_dir = $output_dir;
+    if( $machine eq "chef" ){
+	#convert the file paths from shattuck to chef paths. e.g.
+	#/mnt/data/work/pollardlab
+	#to
+	#/pollard/shattuck0	    
+	my $shattuck_path = '/mnt/data/work/pollardlab/';
+	my $chef_path     = '/pollard/shattuck0/';
+	$blast_input_files_core = convert_local_path_to_remote( $blast_input_files_core, $shattuck_path, $chef_path );
+	$remote_output_dir      = convert_local_path_to_remote( $remote_output_dir, $shattuck_path, $chef_path );
+	$error_dir              = convert_local_path_to_remote( $error_dir, $shattuck_path, $chef_path );
+    }
 
-	for ( my $i = 1; $i <= $file_number; $i++ ) {
-		$count++;
-		my $blast_cmd = "blastp -num_threads $threads $arguments ";
-		$blast_cmd .= "-subject $blast_input_files_core"."_$i.fasta ";
-		$blast_cmd .= "-query $blast_input_files_core"."_\$SGE_TASK_ID.fasta ";
-		$blast_cmd .= "-out $output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
-
-		open( OUT, ">$output_dir/all_v_all_blast_$count.sh" ) || die "Can't open $output_dir/all_v_all_blast_$count.sh: $!\n";
-		print OUT "
+    my $count = 0;
+    
+    for ( my $i = 1; $i <= $file_number; $i++ ) {
+	$count++;
+	my $blast_cmd = "blastp $arguments ";
+	$blast_cmd .= "-subject $blast_input_files_core"."_$i.fasta ";
+	$blast_cmd .= "-query $blast_input_files_core"."_\$SGE_TASK_ID.fasta ";
+	if( $machine eq "chef" ){
+	    $blast_cmd .= "-out $remote_output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
+	}
+	else{
+	    $blast_cmd .= "-out $output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
+	}
+	
+	open( OUT, ">$output_dir/all_v_all_blast_$count.sh" ) || die "Can't open $output_dir/all_v_all_blast_$count.sh: $!\n";
+	print OUT "
 #!/bin/sh
 #\$ -cwd
 #\$ -V
@@ -543,57 +617,116 @@ sub launch_blast {
 #\$ -e $error_dir/all_v_all_jobs.err
 #\$ -o $error_dir/all_v_all_jobs.out
 
+";
+
+	if( $machine eq "chef" ){ 
+	    print OUT "
+#\$ -l arch=linux-x64
+#\$ -l h_rt=0:30:0
+#\$ -l scratch=0.25G
+#\$ -r y
+#\$ -pe smp $threads
+
+";
+	}
+
+	print OUT "
 $blast_cmd
 
 ";
-		close(OUT);
-		`chmod 755 $output_dir/all_v_all_blast_$count.sh`;
-		my $qsub_command = "qsub -q eisen.q -pe threaded $threads $output_dir/all_v_all_blast_$count.sh";
-		my $qsub         = `$qsub_command`;
-		$qsub =~ /Your job (\d+) /;
-		$job_ids{$1} = 1;
+	close(OUT);
+	`chmod 755 $output_dir/all_v_all_blast_$count.sh`;
 
+	my $qsub_command;
+	my $qsub;
+        #run the job
+	if( $machine eq "chef" ){
+	    $qsub_command = "qsub $remote_output_dir/all_v_all_blast_$count.sh";
+	    my $verbose   = 0;
+	    print $qsub_command . "\n";
+	    $qsub   = execute_ssh_cmd( "chef.compbio.ucsf.edu" , $qsub_command, $verbose);
+	    (0 == $EXITVAL) or warn("Execution of command <$qsub_command> returned non-zero exit code $EXITVAL. The remote reponse was: $qsub.");
+	    print $qsub . "\n";
+	    $qsub =~ /Your job\-array (\d+)/;
+	    $job_ids{$1} = 1;
 	}
-	my $flag = 1;
+	else{
+	    $qsub_command = "qsub -q eisen.q -pe threaded $threads $output_dir/all_v_all_blast_$count.sh";
+	    $qsub         = `$qsub_command`;
+	    $qsub =~ /Your job (\d+) /;
+	    $job_ids{$1} = 1;
+	}	
+    }
+    my $flag = 1;
+    while ( scalar( keys(%job_ids) ) > 1 ) {
+	foreach my $jobid ( keys(%job_ids) ) {
+	    my $output = `qstat -j $jobid`;
+	    if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
+		delete $job_ids{$jobid};
+	    }
+	    sleep($MINI_SLEEP); #We don't want to flood the cluster with connection requests
+	}
+	print "going to sleep for $SLEEP_DURATION\n";
+	sleep($SLEEP_DURATION);
+    }
+    return "$output_dir/blast_ouput";
+}
 
-	while ( scalar( keys(%job_ids) ) > 1 ) {
-		foreach my $jobid ( keys(%job_ids) ) {
-			my $output = `qstat -j $jobid 2>&1`;
-			if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
-				delete $job_ids{$jobid};
-			}
-		}
-		sleep($SLEEP_DURATION);
-	}
-	return "$output_dir/hmmsearch_sift.ouput";
+sub convert_local_path_to_remote{
+    my ($variable_path, $local_path, $remote_path) = @_;
+    if( $variable_path =~ m/$local_path/ ){
+	$variable_path =~ s/$local_path/$remote_path/;
+    }
+    else{
+	warn( "Could not find the text $local_path in $variable_path for conversion!\n");
+	die;
+    }
+    return $variable_path;
 }
 
 sub launch_hmmsearch {
-	my %args              = @_;
-	my $hmm_files_core    = $args{hmmfiles};
-	my $seqs              = $args{seq_files};
-	my $arguments         = $args{arguments};
-	my $output_dir        = $args{output_dir};
-	my $error_dir         = $args{error_dir};
-	my $hmmsearch_threads = $args{threads};
-
-	#if the output_dir does not exists create it.
-	print "Creating $output_dir\n" unless -e $output_dir;
-	`mkdir -p $output_dir`         unless -e $output_dir;
-
-	#if the $error_dir does not exists create it.
-	print "Creating $error_dir\n" unless -e $error_dir;
-	`mkdir -p $error_dir`         unless -e $error_dir;
-	my @files       = glob( $hmm_files_core."*" );
-	my $file_number = scalar(@files);
-	print STDERR "There are $file_number HMMs\n";
-	$file_number = 3;
-	print "ARGUMENTS $arguments\n";
-
-	my $hmmsearch_cmd =
-	  "hmmsearch --cpu $hmmsearch_threads $arguments --domtblout $output_dir/hmmsearch_sift.ouput.\$SGE_TASK_ID $hmm_files_core"."_\$SGE_TASK_ID.hmm $seqs";
-	open( OUT, ">$output_dir/hmmsearch_sift.sh" ) || die "Can't open $output_dir/lastal_sift.sh for writing: $!\n";
-	print OUT "
+    my %args              = @_;
+    my $hmm_files_core    = $args{hmmfiles};
+    my $seqs              = $args{seq_files};
+    my $arguments         = $args{arguments};
+    my $output_dir        = $args{output_dir};
+    my $error_dir         = $args{error_dir};
+    my $hmmsearch_threads = $args{threads};
+    my $machine;
+    if( defined($args{machine})){
+	$machine = $args{machine};
+    }
+    #if the output_dir does not exists create it.
+    print "Creating $output_dir\n" unless -e $output_dir;
+    `mkdir -p $output_dir`         unless -e $output_dir;
+    
+    #if the $error_dir does not exists create it.
+    print "Creating $error_dir\n" unless -e $error_dir;
+    `mkdir -p $error_dir`         unless -e $error_dir;
+    my @files       = glob( $hmm_files_core."*" );
+    my $file_number = scalar(@files);
+    print STDERR "There are $file_number HMMs\n";
+    print "ARGUMENTS $arguments\n";
+    
+    my $remote_output_dir = $output_dir;
+    if( $machine eq "chef" ){
+	#convert the file paths from shattuck to chef paths. e.g.
+	#/mnt/data/work/pollardlab
+	#to
+	#/pollard/shattuck0	    
+	my $shattuck_path = '/mnt/data/work/pollardlab/';
+	my $chef_path     = '/pollard/shattuck0/';
+	$seqs           = convert_local_path_to_remote( $seqs, $shattuck_path, $chef_path );
+	$hmm_files_core = convert_local_path_to_remote( $hmm_files_core, $shattuck_path, $chef_path );
+	$remote_output_dir = convert_local_path_to_remote( $remote_output_dir, $shattuck_path, $chef_path );
+	$error_dir = convert_local_path_to_remote( $error_dir, $shattuck_path, $chef_path );
+    }
+    
+    
+    my $hmmsearch_cmd =
+	"hmmsearch --cpu $hmmsearch_threads $arguments --domtblout $remote_output_dir/hmmsearch_sift.ouput.\$SGE_TASK_ID $hmm_files_core"."_\$SGE_TASK_ID.hmm $seqs";
+    open( OUT, ">$output_dir/hmmsearch_sift.sh" ) || die "Can't open $output_dir/lastal_sift.sh for writing: $!\n";
+    print OUT "
 #!/bin/sh
 #\$ -cwd
 #\$ -V
@@ -602,26 +735,66 @@ sub launch_hmmsearch {
 #\$ -t 1-$file_number
 #\$ -e $error_dir/hmmsearch_sifting_jobs.err
 #\$ -o $error_dir/hmmsearch_sifting_jobs.out
-
-$hmmsearch_cmd
+";
+    if( $machine eq "chef" ){ 
+	print OUT "
+#\$ -l arch=linux-x64
+#\$ -l h_rt=0:30:0
+#\$ -l scratch=0.25G
+#\$ -r y
+#\$ -pe smp $hmmsearch_threads
 
 ";
-	close(OUT);
-	`chmod 755 $output_dir/hmmsearch_sift.sh`;
-	my $qsub_command = "qsub -q eisen.q -pe threaded $hmmsearch_threads $output_dir/hmmsearch_sift.sh";
-	my $qsub         = `$qsub_command`;
-	$qsub =~ /Your job (\d+) /;
-	my $job_id = $1;
-	my $flag   = 1;
+    }
+    
+    print OUT "$hmmsearch_cmd
 
-	while ($flag) {
-		sleep($SLEEP_DURATION);
-		my $output = `qstat -j $job_id 2>&1`;
-		if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
-			$flag = 0;
-		}
+";
+    close(OUT);
+    `chmod 755 $output_dir/hmmsearch_sift.sh`;
+    
+    #make sure that the remote cluster can access the data and submission script
+    if( $machine = "chef" ){
+	#assume that the cluster can read the files directly from our db server
+	#for shattuck, need to have the data and script in the folowing location on shattuck
+	#/mnt/data/work/pollardlab
+	#chef will see this as the following location
+	#/pollard/shattuck0	    
+    }
+    else{
+	warn("In launch_sifting::launch_hmmsearch - Can't launch the remote job because you have yet to build the module that pushes the data to your remote cluster!\n");
+	exit(0);
+    }
+    my $qsub_command;
+    my $qsub;
+    my $job_id;
+#run the job
+    if( $machine eq "chef" ){
+	$qsub_command = "qsub $remote_output_dir/hmmsearch_sift.sh";
+	my $verbose   = 0;
+	print $qsub_command . "\n";
+	$qsub   = execute_ssh_cmd( "chef.compbio.ucsf.edu" , $qsub_command, $verbose);
+	(0 == $EXITVAL) or warn("Execution of command <$qsub_command> returned non-zero exit code $EXITVAL. The remote reponse was: $qsub.");
+	$qsub =~ /Your job\-array (\d+)/;
+	$job_id = $1;
+    }
+    else{
+	$qsub_command = "qsub -q eisen.q -pe threaded $hmmsearch_threads $output_dir/hmmsearch_sift.sh";
+	$qsub         = `$qsub_command`;
+	$qsub =~ /Your job (\d+) /;
+	$job_id = $1;
+    }	
+    
+    my $flag   = 1;
+    
+    while ($flag) {
+	sleep($SLEEP_DURATION);
+	my $output = `qstat -j $job_id`;
+	if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
+	    $flag = 0;
 	}
-	return "$output_dir/hmmsearch_sift.ouput";
+    }
+    return "$output_dir/hmmsearch_sift.ouput";
 }
 
 sub index_familymembers {
@@ -687,7 +860,7 @@ $lastal_cmd
 
 	while ($flag) {
 		sleep($SLEEP_DURATION);
-		my $output = `qstat -j $job_id 2>&1`;
+		my $output = `qstat -j $job_id`;
 		if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
 			$flag = 0;
 		}
@@ -742,13 +915,13 @@ $cmd
 	`chmod 755 $output_dir/build_aln_hmm_trees.sh`;
 	my $qsub_command = "qsub -q eisen.q $output_dir/build_aln_hmm_trees.sh";
 	my $qsub         = `$qsub_command`;
-	$qsub =~ /Your job (\d+) /;
+	$qsub =~ /Your job\-array (\d+)/;
 	my $job_id = $1;
 	my $flag   = 1;
 
 	while ($flag) {
 		sleep($SLEEP_DURATION);
-		my $output = `qstat -j $job_id 2>&1`;
+		my $output = `qstat -j $job_id`;
 		if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
 			$flag = 0;
 		}
@@ -759,3 +932,11 @@ $cmd
 	#}
 }
 
+sub execute_ssh_cmd{
+    my ($connection, $remote_cmd, $verbose) = @_;
+    my $verboseFlag = (defined($verbose) && $verbose) ? '-v' : '';
+    my $sshOptions = "ssh $connection";
+    my $results = IPC::System::Simple::capture("$sshOptions $remote_cmd");
+    (0 == $EXITVAL) or die( "Error running this ssh command: $sshOptions $remote_cmd: $results" );
+    return $results; ## <-- this gets used! Don't remove it.
+}

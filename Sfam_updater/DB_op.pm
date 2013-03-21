@@ -24,10 +24,16 @@ sub gather_CDS {
 	my $password   = $args{password};
 	my $fragmented = $args{fragmented};    #fragment the output in smaller pieces 1 or 0
 	my $old        = $args{old};           #gather family members or not (1 or 0)
-
+	my $spl_size;       #how many files do we want? this is the denominator in the div_size calculation. 
+	if( defined( $args{spl_size} ) ){
+	    $spl_size = $args{spl_size};
+	}
+	else{
+	    $spl_size = 1;
+	}
 	#if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
-	`mkdir $output_dir`            unless -e $output_dir;
+	`mkdir -p $output_dir`            unless -e $output_dir;
 
 	my $DB = DBI->connect( $db, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
 	my $count_statement = "SELECT COUNT(g.gene_oid) FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
@@ -38,11 +44,11 @@ sub gather_CDS {
 	my $query = $DB->prepare($prepare_statement);
 	$query->execute();
 	my $total_seqs = count_all_CDS(	old        => 0,
-									db         => $db,
-									username   => $username,
-									password   => $password,
+					db         => $db,
+					username   => $username,
+					password   => $password,
 	);
-	my $div_size = int($total_seqs / 14);
+	my $div_size = int($total_seqs / $spl_size);
 	my $count       = 0;
 	my $div         = 1;
 	my $output_file = $output_dir."/";
@@ -63,7 +69,7 @@ sub gather_CDS {
 		print OUT ">$results[0]\n$results[1]\n";
 	}
 	close(OUT);
-	print "Inside db_gather_all_non_familymembers_CDS\n";
+	print "Inside dbg_ather_all_non_familymembers_CDS\n";
 	print "Found $count sequences\n";
 	return $file_core;
 }
@@ -84,7 +90,7 @@ sub insert_familymembers{
 	$analysis->set_username($username);
 	$analysis->set_password($password);
 	$analysis->build_schema();
-	print STDERR "Inside insert family member\n";
+	print STDERR "Inserting family members\n";
 	open(IN, $input_file) or die "Can't open $input_file for reading: $!\n";
 	my %family_sizes = ();
 	while(<IN>){
@@ -244,16 +250,11 @@ sub prep_families_for_representative_picking{
 
 sub count_all_CDS{
 	my %args       = @_;
-	my $output_dir = $args{output_dir};
 	my $db         = $args{db};
 	my $username   = $args{username};
 	my $password   = $args{password};
 	my $fragmented = $args{fragmented};    #fragment the output in smaller pieces 1 or 0
 	my $old        = $args{old};           #gather family members or not (1 or 0)
-
-	#if the output_dir does not exists create it.
-	print "Creating $output_dir\n" unless -e $output_dir;
-	`mkdir $output_dir`            unless -e $output_dir;
 
 	my $DB = DBI->connect( $db, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
 	my $count_statement = "SELECT COUNT(g.gene_oid) FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
