@@ -439,7 +439,7 @@ sub launch_mcl {
 	#if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
-	my $mcl_cmd = "mcl $input_file $mcl_params -te $threads --abc -o $output_dir/mcl_ouput.mcl";
+	my $mcl_cmd = "mcl $input_file $mcl_params -te $threads --abc -o $remote_output_dir/mcl_ouput.mcl";
 	open( OUT, ">$output_dir/mcl_job.sh" ) || die "Can't open $output_dir/mcl_job.sh for writing: $!\n";
 	print OUT "
 #!/bin/sh
