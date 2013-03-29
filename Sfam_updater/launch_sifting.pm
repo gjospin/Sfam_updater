@@ -8,7 +8,7 @@ use Carp;
 use Data::Dumper;
 
 my $LASTDB_SIZE    = "900M";
-my $SLEEP_DURATION = 30;
+my $SLEEP_DURATION = 300;
 my $MINI_SLEEP     = 0.5;
 my $DIV_SIZE       = 1000000;    #how many sequences will be written to 1 file for the sifting;
 
@@ -92,10 +92,10 @@ sub parse_lastal {
 
 sub extract_lastal_leftovers {
 	my %args = @_;
-	my $family_members_files => $args{family_members_files};
-	my $new_cds_core         => $args{new_cds_core};
-	my $output_dir           => $args{output_dir};
-	my $output_file          => $args{output_file};
+	my $family_members_files = $args{family_members_files};
+	my $new_cds_core         = $args{new_cds_core};
+	my $output_dir           = $args{output_dir};
+	my $output_file          = $args{output_file};
 
 	#if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
@@ -105,7 +105,7 @@ sub extract_lastal_leftovers {
 	while (<FAM_MEM_IN>) {
 		next if $_ =~ /#/;    #skip if there is a header;
 		$_ =~ m/^(\d+)\s+(\d+)/;
-		$new_family_members{$1};
+		$new_family_members{$1} = 1;
 	}
 	my $count = 0;
 	open( OUT, ">$output_dir/"."lastal_leftovers.fasta" ) || die "Can't open $output_dir/"."lastal_leftovers.fasta for writing: $!\n";
@@ -163,8 +163,8 @@ sub extract_hmmsearch_leftovers {
 	$count = 0;
 	my $div = 1;
 	open( OUT, ">$output_dir/hmmsearch_leftovers_$div.fasta" ) || die "Can't open $output_dir/hmmsearch_leftovers_$div.fasta for writing: $!\n";
-	my $inseqs = Bio::SeqIO->new( -file => "$output_dir/hmmsearch_leftovers.fasta", -format => 'fasta' );
-	while ( my $seq = $inseqs->next_seq() ) {
+	my $inseqs2 = Bio::SeqIO->new( -file => "$output_dir/hmmsearch_leftovers.fasta", -format => 'fasta' );
+	while ( my $seq = $inseqs2->next_seq() ) {
 		$count++;
 		my $id       = $seq->display_id();
 		my $sequence = $seq->seq();
@@ -326,7 +326,7 @@ sub parse_mcl {
 	my $db              = $args{db};
 	my $username        = $args{username};
 	my $password        = $args{password};
-	my $output_dir      = $args{output_dir};
+
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
 	my $analysis = MRC->new();
@@ -335,7 +335,7 @@ sub parse_mcl {
 	$analysis->set_password($password);
 	$analysis->build_schema();
 	open( MCL_IN, $mcl_output_file ) || die "Can't open $mcl_output_file for reading: $!\n";
-	open( FAM_MAPPING, ">$output_dir/mcl_newCDS_to_fam.map" ) || "Can't open $output_dir/mcl_newCDS_to_fam.map for writing: $!\n";
+	open( FAM_MAPPING, ">$output_dir" . "/mcl_newCDS_to_fam.map" ) || die "Can't open $output_dir/mcl_newCDS_to_fam.map for writing: $!\n";
 	my $familyconstruction_id = $analysis->MRC::DB::get_max_familyconstruction_id();
 	print STDERR "Family construction ID used : $familyconstruction_id\n";
 
@@ -372,21 +372,26 @@ sub parse_mcl {
 }
 
 sub fine_tune_representative_picking {
-	my %args      = @_;
-	my $blast_dir = $args{blast_dir};
-	my @files     = <$blast_dir/*.abc>;
+	my %args            = @_;
+	my $reps_dir        = $args{reps_dir};
+	my $remote          = $args{remote};
+	my $get_link_path   = $args{get_link_path};
+	my $mcl_redunt_path = $args{mcl_redunt_path};
+	my $rep_threshold   = $args{rep_threshold};
+	my @files           = <$reps_dir/*.abc>;
 	foreach my $file (@files) {
 		next if $file !~ m/\/(\d+).abc/;
 		my $core = $1;
 		if ( !-z $file ) {
-			if ( !-e "$blast_dir/$core.mcl.log" ) {
+			if ( !-e "$reps_dir/$core.mcl.log" ) {
 				print "Initializing reps for $core\n";
-				`perl Sfam_updater/pick_rep_by_mcl.pl -i $blast_dir/$core.abc -o $blast_dir/$core.mcl -c 99`;
+				print "perl Sfam_updater/pick_rep_by_mcl.pl -i $reps_dir/$core.abc -o $reps_dir/$core.mcl -c 99 -m $mcl_redunt_path -g $get_link_path\n";
+				`perl Sfam_updater/pick_rep_by_mcl.pl -i $reps_dir/$core.abc -o $reps_dir/$core.mcl -c 99 -m $mcl_redunt_path -g $get_link_path`;
 			}
 			print "Done initializing reps $core\n";
 			my $rep_count = 10000;
 			while ( $rep_count > 250 ) {
-				open( inFILE, "$blast_dir/$core.mcl.log" );
+				open( inFILE, "$reps_dir/$core.mcl.log" );
 				while (<inFILE>) {
 					if ( $_ =~ m/number_of_rep/ ) {
 
@@ -396,13 +401,13 @@ sub fine_tune_representative_picking {
 						my $cutoff = $2;
 						if ( $rep_count > 1500 ) {
 							$cutoff = $cutoff - 5;
-						} elsif ( $rep_count < 250 ) {
+						} elsif ( $rep_count < $rep_threshold ) {
 							print "Reps # under the cutoff, skipping\n";
 							next;
 						} else {
 							$cutoff = $cutoff - 1;
 						}
-						`perl Sfam_updater/pick_rep_by_mcl.pl -i $blast_dir/$core.parsed -o $blast_dir/$core.mcl -c 99`;
+						`perl Sfam_updater/pick_rep_by_mcl.pl -i $reps_dir/$core.parsed -o $reps_dir/$core.mcl -c 99 -m $mcl_redunt_path -g $get_link_path`;
 					}
 				}
 			}
@@ -498,7 +503,7 @@ $mcl_cmd
 			$flag = 0;
 		}
 	}
-	return "$output_dir/mcl_ouput.mcl";
+	return "$output_dir/mcl_output.mcl";
 }
 
 sub parse_blast {
@@ -508,13 +513,21 @@ sub parse_blast {
 	my $evalue             = $args{evalue};
 	my $output_dir         = $args{output_dir};
 	my $seq_length_hashref = $args{seq_lengths};
+	my $factor_pid         = 1;
+	my $mcl_input_stem     = "mcl_input";
+	if( defined( $args{mcl_stem} ) ){
+	    $mcl_input_stem = $args{mcl_stem};
+	}
+	if( defined( $args{factor_pid} ) ){
+	    $factor_pid = $args{factor_pid};
+	}
 	my %seq_lengths        = %{$seq_length_hashref};
 
 	#if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
 	my @files = glob( $files_to_parse."*" );
-	open( OUT, ">$output_dir/mcl_input.abc" ) || die "Can't open $output_dir/mcl_input.abc for writing: $!\n";
+	open( OUT, ">$output_dir/$mcl_input_stem.abc" ) || die "Can't open $output_dir/mcl_input_stem.abc for writing: $!\n";
 	foreach my $file (@files) {
 		open( IN, $file ) || die "Can't open $file for reading: $!\n";
 		while (<IN>) {
@@ -533,10 +546,9 @@ sub parse_blast {
 			my $queryStart = $line[6];
 			my $queryEnd   = $line[7];
 			my $identity   = $line[2] / 100;
-			$identity = sprintf( "%.3f", $identity );
+			$identity = sprintf( "%.3f", $identity * $factor_pid );		       
 			my $query_coverage = ( $queryEnd - $queryStart + 1 ) / $query_len;
 			my $hit_coverage   = ( $hitEnd - $hitStart + 1 ) / $hit_len;
-
 			#	print "$query_coverage\t$hit_coverage\t$eValue\n";
 
 			if (    ( $query_coverage > $coverage )
@@ -549,7 +561,7 @@ sub parse_blast {
 		close(IN);
 	}
 	close(OUT);
-	return "$output_dir/mcl_input.abc";
+	return "$output_dir/$mcl_input_stem.abc";
 }
 
 sub launch_blast {
@@ -559,6 +571,10 @@ sub launch_blast {
     my $output_dir             = $args{output_dir};
     my $error_dir              = $args{error_dir};
     my $threads                = $args{threads};
+    my $array                  = 1; #set to 0 if you just want to blast each file against itself, not all v all
+    if( defined( $args{array} ) ){
+	$array = $args{array};
+    }
     my $machine;
     if( defined($args{machine})){
 	$machine = $args{machine};
@@ -575,6 +591,7 @@ sub launch_blast {
     `mkdir -p $error_dir`         unless -e $error_dir;
     my @files       = glob( $blast_input_files_core."*" );
     my $file_number = scalar(@files);
+
     print STDERR "$blast_input_files_core\n";
     print STDERR "There are $file_number Blast files\n";
     print "ARGUMENTS $arguments\n";
@@ -596,16 +613,29 @@ sub launch_blast {
     
     for ( my $i = 1; $i <= $file_number; $i++ ) {
 	$count++;
-	my $blast_cmd = "blastp $arguments ";
-	$blast_cmd .= "-subject $blast_input_files_core"."_$i.fasta ";
-	$blast_cmd .= "-query $blast_input_files_core"."_\$SGE_TASK_ID.fasta ";
-	if( $machine eq "chef" ){
-	    $blast_cmd .= "-out $remote_output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
+	my $blast_cmd;
+	if( !$array ){
+	    $blast_cmd = "blastp $arguments ";
+	    $blast_cmd .= "-subject $blast_input_files_core"."_\$SGE_TASK_ID.fasta ";
+	    $blast_cmd .= "-query $blast_input_files_core"."_\$SGE_TASK_ID.fasta ";
+	    if( $machine eq "chef" ){
+		$blast_cmd .= "-out $remote_output_dir/blast_output"."_\$SGE_TASK_ID.tblout";
+	    }
+	    else{
+		$blast_cmd .= "-out $output_dir/blast_output"."_\$SGE_TASK_ID.tblout";
+	    }
 	}
 	else{
-	    $blast_cmd .= "-out $output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
+	    $blast_cmd = "blastp $arguments ";
+	    $blast_cmd .= "-subject $blast_input_files_core"."_$i.fasta ";
+	    $blast_cmd .= "-query $blast_input_files_core"."_\$SGE_TASK_ID.fasta ";
+	    if( $machine eq "chef" ){
+		$blast_cmd .= "-out $remote_output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
+	    }
+	    else{
+		$blast_cmd .= "-out $output_dir/blast_output.$i.\$SGE_TASK_ID.tblout";
+	    }
 	}
-	
 	open( OUT, ">$output_dir/all_v_all_blast_$count.sh" ) || die "Can't open $output_dir/all_v_all_blast_$count.sh: $!\n";
 	print OUT "
 #!/bin/sh
@@ -622,7 +652,7 @@ sub launch_blast {
 	if( $machine eq "chef" ){ 
 	    print OUT "
 #\$ -l arch=linux-x64
-#\$ -l h_rt=0:30:0
+#\$ -l h_rt=336:00:0
 #\$ -l scratch=0.25G
 #\$ -r y
 #\$ -pe smp $threads
@@ -634,6 +664,7 @@ sub launch_blast {
 $blast_cmd
 
 ";
+
 	close(OUT);
 	`chmod 755 $output_dir/all_v_all_blast_$count.sh`;
 
@@ -645,9 +676,8 @@ $blast_cmd
 	    my $verbose   = 0;
 	    print $qsub_command . "\n";
 	    $qsub   = execute_ssh_cmd( "chef.compbio.ucsf.edu" , $qsub_command, $verbose);
-	    (0 == $EXITVAL) or warn("Execution of command <$qsub_command> returned non-zero exit code $EXITVAL. The remote reponse was: $qsub.");
-	    print $qsub . "\n";
 	    $qsub =~ /Your job\-array (\d+)/;
+	    print $1 ."\n";
 	    $job_ids{$1} = 1;
 	}
 	else{
@@ -655,21 +685,31 @@ $blast_cmd
 	    $qsub         = `$qsub_command`;
 	    $qsub =~ /Your job (\d+) /;
 	    $job_ids{$1} = 1;
-	}	
+	}
+	if( !$array ){
+	    last;
+	}
     }
     my $flag = 1;
-    while ( scalar( keys(%job_ids) ) > 1 ) {
+    while ( scalar( keys(%job_ids) ) > 0 ) {
 	foreach my $jobid ( keys(%job_ids) ) {
-	    my $output = `qstat -j $jobid`;
-	    if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
+	    my $output;
+	    if( $machine eq "chef" ){
+		#can't use IPC module because we want the exit(1) error!
+		$output = `ssh chef.compbio.ucsf.edu qstat -j $jobid`;
+	    }
+	    else{
+		$output = `qstat -j $jobid`;
+	    }
+	    #Following jobs do not exist
+	    if ( !defined($output) || $output =~ m/^Following/ || $output eq '') {
 		delete $job_ids{$jobid};
 	    }
 	    sleep($MINI_SLEEP); #We don't want to flood the cluster with connection requests
 	}
-	print "going to sleep for $SLEEP_DURATION\n";
 	sleep($SLEEP_DURATION);
     }
-    return "$output_dir/blast_ouput";
+    return "$output_dir/blast_output";
 }
 
 sub convert_local_path_to_remote{
@@ -754,7 +794,7 @@ sub launch_hmmsearch {
     `chmod 755 $output_dir/hmmsearch_sift.sh`;
     
     #make sure that the remote cluster can access the data and submission script
-    if( $machine = "chef" ){
+    if( $machine eq "chef" ){
 	#assume that the cluster can read the files directly from our db server
 	#for shattuck, need to have the data and script in the folowing location on shattuck
 	#/mnt/data/work/pollardlab
@@ -876,12 +916,17 @@ sub build_aln_hmm_trees {
 	my $error_dir       = $args{error};
 	my $total_jobs      = $args{total_jobs};
 	my $data_repository = $args{repo};
+	my $machine;
+	if( defined($args{machine})){
+	    $machine = $args{machine};
+	}
+
 	##if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
 	print $directory."/*_new"."CDS.fasta\n";
 	my @files = glob( $directory."/*_new"."CDS.fasta" );
-	##if the error_dir does not exists create it.
+	#if the error_dir does not exists create it.
 	print "Creating $error_dir\n" unless -e $error_dir;
 	`mkdir -p $error_dir`         unless -e $error_dir;
 	my $low_file  = undef;
@@ -893,7 +938,21 @@ sub build_aln_hmm_trees {
 		$high_file = $1 if $high_file < $1;
 	}
 	my $end_array_job = $low_file + $total_jobs - 1;
-	my $cmd = "perl external_software_launcher.pl $type \$SGE_TASK_ID $high_file $total_jobs $directory _newCDS.fasta $output_dir $data_repository";
+	my $remote_output_dir = $output_dir;
+	if( $machine eq "chef" ){
+	    #convert the file paths from shattuck to chef paths. e.g.
+	    #/mnt/data/work/pollardlab
+	    #to
+	    #/pollard/shattuck0    
+	    my $shattuck_path  = '/mnt/data/work/pollardlab/';
+	    my $chef_path      = '/pollard/shattuck0/';
+	    $directory         = convert_local_path_to_remote( $directory,         $shattuck_path, $chef_path );
+	    $remote_output_dir = convert_local_path_to_remote( $remote_output_dir, $shattuck_path, $chef_path );
+	    $error_dir         = convert_local_path_to_remote( $error_dir,         $shattuck_path, $chef_path );
+	    $data_repository   = convert_local_path_to_remote( $data_repository,   $shattuck_path, $chef_path );
+	}
+	`cp external_software_launcher.pl $remote_output_dir`;
+	my $cmd = "perl $remote_output_dir/external_software_launcher.pl $type \$SGE_TASK_ID $high_file $total_jobs $directory _newCDS.fasta $remote_output_dir $data_repository";
 	print "$cmd\n";
 	print "Lowfile :$low_file\tHigh file : $high_file\n";
 	open( OUT, ">$output_dir/build_aln_hmm_trees.sh" ) || die "Can't open $output_dir/build_aln_hmm_trees.sh for writing: $!\n";
@@ -904,17 +963,42 @@ sub build_aln_hmm_trees {
 #\$ -S /bin/bash
 
 #\$ -t $low_file-$end_array_job
-#\$ -e $error_dir/lastal_sifting_jobs.err
-#\$ -o $error_dir/lastal_sifting_jobs.out
+#\$ -e $error_dir/external_launcher.err
+#\$ -o $error_dir/external_launcher.out
 
+";
+
+	if( $machine eq "chef" ){ 
+	        print OUT "
+#\$ -l arch=linux-x64
+#\$ -l h_rt=0:30:0
+#\$ -l scratch=0.25G
+#\$ -r y
+
+";
+	}
+
+	print OUT "
 $cmd 
 
 ";
 	close(OUT);
 	print "RUNNING $cmd\n";
 	`chmod 755 $output_dir/build_aln_hmm_trees.sh`;
-	my $qsub_command = "qsub -q eisen.q $output_dir/build_aln_hmm_trees.sh";
-	my $qsub         = `$qsub_command`;
+	my $qsub_command;
+	my $qsub;
+	if( $machine eq "chef" ){
+	    $qsub_command = "qsub $remote_output_dir/build_aln_hmm_trees.sh";
+	    my $verbose   = 0;
+	    print $qsub_command . "\n";
+	    $qsub   = execute_ssh_cmd( "chef.compbio.ucsf.edu" , $qsub_command, $verbose);
+	    (0 == $EXITVAL) or warn("Execution of command <$qsub_command> returned non-zero exit code $EXITVAL. The remote reponse was: $qsub.");
+	    print $qsub . "\n";
+	}
+	else{
+	    $qsub_command = "qsub -q eisen.q $output_dir/build_aln_hmm_trees.sh";
+	    $qsub         = `$qsub_command`;
+	}
 	$qsub =~ /Your job\-array (\d+)/;
 	my $job_id = $1;
 	my $flag   = 1;
@@ -927,16 +1011,16 @@ $cmd
 		}
 	}
 	return $output_dir;
-
-	#for(my $i = 1; $i <= $step; $i++){
-	#}
 }
 
 sub execute_ssh_cmd{
-    my ($connection, $remote_cmd, $verbose) = @_;
+    my ($connection, $remote_cmd, $verbose, $quiet) = @_;
+    if( !defined( $quiet ) ){
+	$quiet = 1;
+    }
     my $verboseFlag = (defined($verbose) && $verbose) ? '-v' : '';
-    my $sshOptions = "ssh $connection";
-    my $results = IPC::System::Simple::capture("$sshOptions $remote_cmd");
-    (0 == $EXITVAL) or die( "Error running this ssh command: $sshOptions $remote_cmd: $results" );
+    my $sshOptions  = "ssh $connection";
+    my $results     = IPC::System::Simple::capture("$sshOptions $remote_cmd");
+    (0 == $EXITVAL) or die( "Error running this ssh command: $sshOptions $remote_cmd: $results" ) unless ( $quiet );
     return $results; ## <-- this gets used! Don't remove it.
 }

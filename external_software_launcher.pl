@@ -68,7 +68,7 @@ if ( $type eq 'new' ) {
 				`gzip $hmm_dir/$i.hmm`;
 			}
 			##Tree of the alignment
-			`fasttree $aln_dir/$i.aln > $tree_dir/$i.tree` unless -e "$tree_dir/$i.tree";
+			`FastTree $aln_dir/$i.aln > $tree_dir/$i.tree` unless -e "$tree_dir/$i.tree";
 		}
 	}
 }elsif ( $type eq 'old' ) {
@@ -84,7 +84,7 @@ if ( $type eq 'new' ) {
 	  ##HMM of the alignment file
 	  `hmmbuild --informat afa $hmm_dir/$i.hmm $aln_dir/$i.aln` unless -s "$hmm_dir/$i.hmm";
 	  ##Tree of the alignment
-	  `fasttree $aln_dir/$i.aln > $tree_dir/$i.tree` unless -s "$tree_dir/$i.tree";
+	  `FastTree $aln_dir/$i.aln > $tree_dir/$i.tree` unless -s "$tree_dir/$i.tree";
   }
 } else {
   die "Command $type not recognized\n";

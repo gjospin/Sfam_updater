@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 ###Usage: pick_rep_by_mcl.pl -i input_link -n number -o output_file  -c similarity_cutoff
-### if -c , -n will be invalide
+### if -c , -n will be invalid
 
 use strict;
 
@@ -11,8 +11,10 @@ my $number_cutoff=$opt{'-n'};
 if(!$number_cutoff){$number_cutoff=200;}
 my $output=$opt{'-o'};
 
-my $mcl_redunt_reduce="/home/gjospin/proteinFamilies/round2_blast/mcl_redunt_reduce.pl";
-my $get_link_by_list="/home/gjospin/proteinFamilies/round2_blast/get_link_by_list.pl";
+my $mcl_redunt_reduce=$opt{'-m'}; #path to mcl_redunt_reduce.pl
+my $get_link_by_list=$opt{'-g'}; #path to get_link_by_list.pl
+#my $mcl_redunt_reduce="./mcl_redunt_reduce.pl";
+#my $get_link_by_list="./get_link_by_list.pl";
 
 ##-link test.link -include wawa -output dudu -cutoff 35 
 
@@ -25,7 +27,7 @@ my $tmp_file=$output.".reptmp1";
 my $previous_tmp_file=$tmp_file.".previous";
 
 my $log=$output.".log";
-open(LOG,">$log");
+open(LOG,">$log") || die "Can't open $log for write: $!\n";
 print LOG "number_of_rep\tsimilarity_cutoff\n";
 
 if(length($opt{'-c'})){$cutoff=$opt{'-c'};}
@@ -45,7 +47,7 @@ close IN;
 
 if(length($opt{'-c'}) || $number_rep <= $number_cutoff){
     rename($tmp_file,$output);
-print LOG "Final: ".$number_rep."\t".$cutoff."\n";
+    print LOG "Final: ".$number_rep."\t".$cutoff."\n";
     exit;
 }
 

@@ -1,4 +1,4 @@
-#1/usr/bin/perl -w
+#!/usr/bin/perl -w
 package Sfam_updater;
 use strict;
 use Sfam_updater::launch_sifting;
@@ -6,36 +6,41 @@ use Sfam_updater::launch_sifting;
 use Sfam_updater::DB_op;
 use Sfam_updater::download_jgi_data;
 use Getopt::Long;
+#MUST HAVE MCL INSTALLED ON THE LOCAL MACHINE!
+#MUST HAVE HMMSEARCH, BLAST, FASTTREE, AND MCL INSTALLED ON THE REMOTE MACHINE!
 
 #gather options for what to skip. If nothing is specified, run everything.
 my (
-	 $username,               $password,             $skip_download,            $skip_index,           $skip_sifting,
-	 $skip_DB_inserts,        $total_files_to_sift,  $core_file_to_sift,        $total_files_to_index, $core_file_to_index,
-	 $genome_download_dir,    $genome_file,          $tmp_data,                 $sifting_lastal_db,    $lastal_results_core,
-	 $lastal_leftovers_core,  $CDS_length_hash_ref,  $lastal_new_familymembers, $hmm_file_core,        $number_of_hmms,
-	 $hmmsearch_results_core, $total_files_to_blast, $core_file_to_blast,       $author,               $description,
-         $name,                   $data_repo, 
+    $username,               $password,             $skip_download,            $skip_index,           $skip_sifting,
+    $skip_DB_inserts,        $total_files_to_sift,  $core_file_to_sift,        $total_files_to_index, $core_file_to_index,
+    $genome_download_dir,    $genome_file,          $tmp_data,                 $sifting_lastal_db,    $lastal_results_core,
+    $lastal_leftovers_core,  $CDS_length_hash_ref,  $lastal_new_familymembers, $hmm_file_core,        $number_of_hmms,
+    $hmmsearch_results_core, $total_files_to_blast, $core_file_to_blast,       $author,               $description,
+    $name,                   $data_repo,            $rep_threshold,
 );
 my $threads = 2;    #default hmmsearch_thread
+my $path_to_sfams_repo = "./";
+
 
 #my $DB_pointer  = "DBI:mysql:Sfams:lighthouse.ucsf.edu";
 my $DB_pointer = "DBI:mysql:SFams";
 GetOptions(
-			"skip-download"   => \$skip_download,
-			"skip-index"      => \$skip_index,
-			"skip-sifting"    => \$skip_sifting,
-			"skip-DB-inserts" => \$skip_DB_inserts,
-			"u=s"             => \$username,
-			"p=s"             => \$password,
-			"db=s"            => \$DB_pointer,
-			"download-dir=s"  => \$genome_download_dir,
-			"genome-file=s"   => \$genome_file,
-			"data-dir=s"      => \$tmp_data,
-                        "ref-db=s"        => \$data_repo, #location of the ref hmms
-			"threads=i"       => \$threads,
-			"author=s"        => \$author,
-			"description=s"   => \$description,
-			"name=s"          => \$name,                        
+    "skip-download"   => \$skip_download,
+    "skip-index"      => \$skip_index,
+    "skip-sifting"    => \$skip_sifting,
+    "skip-DB-inserts" => \$skip_DB_inserts,
+    "u=s"             => \$username,
+    "p=s"             => \$password,
+    "db=s"            => \$DB_pointer,
+    "download-dir=s"  => \$genome_download_dir,
+    "genome-file=s"   => \$genome_file,
+    "data-dir=s"      => \$tmp_data,
+    "ref-db=s"        => \$data_repo, #location of the ref hmms
+    "threads=i"       => \$threads,
+    "author=s"        => \$author,
+    "description=s"   => \$description,
+    "name=s"          => \$name,               
+    "rep-thresh=i" => \$rep_threshold,
 );
 
 die "Please provide a name for the new family construction using --name\n"                   unless defined($name);
@@ -44,6 +49,7 @@ die "Please provide a description for the new family construction using --descri
 die "Please provide a username for the MySQL database (Needs insert priviledges) using -u\n" unless defined($username);
 die "Please provide a Database pointer for the MySQL database to use using --db\n"           unless defined($DB_pointer);
 die "Please provide the location of the reference HMM database repository using --ref-db\n"  unless defined($data_repo) || ($skip_index);  
+die "Please define a representative selection threshold by using --rep-thresh\n"             unless defined($rep_threshold); 
 
 if ( !defined($password) ) {
 	print "Enter MySQL password :\n";
@@ -53,13 +59,13 @@ if ( !defined($password) ) {
 
 #first thing, create a familyconstruction row
 my $family_construction_id = Sfam_updater::DB_op::insert_fc(
-															 username    => $username,
-															 password    => $password,
-															 db          => $DB_pointer,
-															 author      => $author,
-															 description => $description,
-															 name        => $name
-);
+    username    => $username,
+    password    => $password,
+    db          => $DB_pointer,
+    author      => $author,
+    description => $description,
+    name        => $name
+    );
 
 # Read IMG excel spreadsheet and download new genomes
 # Insert new genomes and genes information in the DB
@@ -112,10 +118,6 @@ unless ($skip_index) {
 	#$sifting_lastal_db = Sfam_updater::launch_sifting::index_familymembers(    file_to_index => "$core_file_to_index.fasta",
 	#																	output_dir    => $tmp_data."/ref_lastal_db" );
 }
-#$sifting_lastal_db  = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/ref_lastal_db/sfams";
-#$core_file_to_index = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/familymembers";
-#$core_file_to_sift  = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/newCDS";
-#my $data_repo = "/var/opt/iseem/protein_families/HMMs";
 
 unless ($skip_sifting) {
 
@@ -232,7 +234,7 @@ unless ($skip_sifting) {
 									 machine   => "chef",
 	);
 
-    }
+    
 #    my $blast_results_core = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/blast_results/blast_output";
     my $blast_results_core = "/mnt/data/work/pollardlab/sharpton/Sfam_updater/test/sfams/blast_results/blast_output";
     $core_file_to_blast = "/mnt/data/work/pollardlab/sharpton/Sfam_updater/test/sfams/blast_input/newCDS";
@@ -259,70 +261,81 @@ unless ($skip_sifting) {
 	machine    => "chef",
 	);
 
+
+    
+	#my $mcl_output_file             = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL/mcl_output.mcl";
+	#my $new_family_IDs_mapping_file = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL/mcl_newCDS_to_fam.map";
+    my $mcl_output_file             = "/mnt/data/work/pollardlab/sharpton/Sfam_updater/test/sfams/MCL/mcl_output.mcl";
+    my $new_family_IDs_mapping_file = Sfam_updater::launch_sifting::parse_mcl(
+	db              => $DB_pointer,
+	username        => $username,
+	password        => $password,
+	mcl_output_file => $mcl_output_file,
+	output_dir => $tmp_data."/MCL",
+	);
+
+    Sfam_updater::DB_op::insert_familymembers(
+	input    => $new_family_IDs_mapping_file,
+	db       => $DB_pointer,
+	username => $username,
+	password => $password,
+	output   => $tmp_data."/new_fams",
+	);
+ 
+    # Seqs have been split by fam_ids.  Need to align
+    #De novo alignment for $tmp_data/new_fams files
+    $family_construction_id = 65;
+    #my $mcl_file = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL_input/mcl_input.abc";
+    my $mcl_file = "/mnt/data/work/pollardlab/sharpton/Sfam_updater/test/sfams/MCL/mcl_input.abc";
+
+    #REP PICKING NEEDS TO BE DONE ON REMOTE SERVER
+    my $representatives_dir = Sfam_updater::DB_op::prep_families_for_representative_picking(
+	db               => $DB_pointer,
+	username         => $username,
+	password         => $password,
+	output_directory => $tmp_data."/new_fams",
+	fc_id            => $family_construction_id,
+	mcl_input        => $mcl_file,
+	rep_threshold    => $rep_threshold,	
+	);
+    #my $representatives_dir = $tmp_data."/new_fams/representatives";
+    
+    Sfam_updater::launch_sifting::fine_tune_representative_picking( 
+	reps_dir        => $representatives_dir,
+	get_link_path   => $path_to_sfams_repo . "/get_link_by_list.pl",
+	mcl_redunt_path => $path_to_sfams_repo . "/mcl_redunt_reduce.pl",
+	rep_threshold   => $rep_threshold,
+	);
+    Sfam_updater::DB_op::generate_representative_fasta(
+	representative_dir => $representatives_dir,
+	output_dir => $representatives_dir,
+	db         => $DB_pointer,
+	username   => $username,
+	password   => $password,
+	);
+    }    
+    
+    #this isn't working yet...
+    my $old_fam_dir = Sfam_updater::launch_sifting::build_aln_hmm_trees( directory  => $tmp_data."/old_fams",
+									 repo       => $data_repo,
+									 total_jobs => 200,
+									 type       => 'old',
+									 output     => $tmp_data."old_fams",
+									 error      => $tmp_data."aln_hmm_trees_old",
+									 machine    => "chef",
+	);
     exit;
 
-	my $mcl_output_file             = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL/mcl_output.mcl";
-	my $new_family_IDs_mapping_file = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL/mcl_newCDS_to_fam.map";
+    #De novo alignment for $tmp_data/new_fams files
+    my $new_fam_dir = Sfam_updater::launch_sifting::build_aln_hmm_trees(
+	directory  => $tmp_data."/new_fams",
+	repo       => $data_repo,
+	total_jobs => 200,
+	type       => 'new',
+	output     => $tmp_data."new_fams",
+	error      => $tmp_data."aln_hmm_trees_new",
+	);
 
-	#	my $new_family_IDs_mapping_file = Sfam_updater::launch_sifting::parse_mcl(
-	#																			   db              => $DB_pointer,
-	#																			   username        => $username,
-	#																			   password        => $password,
-	#																			   mcl_output_file => $mcl_output_file,
-	#																			   output_dir => $tmp_data."/MCL",
-	#	);
-	#Sfam_updater::DB_op::insert_familymembers(
-	#										   input    => $new_family_IDs_mapping_file,
-	#										   db       => $DB_pointer,
-	#										   username => $username,
-	#										   password => $password,
-	#										   output   => $tmp_data."/new_fams",
-	#);
-
-	# Seqs have been split by fam_ids.  Need to align
-	#De novo alignment for $tmp_data/new_fams files
-	$family_construction_id = 23;
-	my $mcl_file = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/MCL_input/mcl_input.abc";
-
-	#my $representatives_dir = Sfam_updater::DB_op::prep_families_for_representative_picking(
-	#	db               => $DB_pointer,
-	#	username         => $username,
-	#	password         => $password,
-	#	output_directory => $tmp_data."/new_fams",
-	#	fc_id            => $family_construction_id,
-	#	mcl_input        => $mcl_file,
-	#	rep_threshold    => 30,
-	#
-	#);
-	my $representatives_dir = $tmp_data."/new_fams/representatives";
-
-	#Sfam_updater::launch_sifting::fine_tune_representative_picking( blast_dir => $representatives_dir );
-	#Sfam_updater::DB_op::generate_representative_fasta(
-	#													representative_dir => $representatives_dir,
-	#													output_dir => $representatives_dir,
-	#													db         => $DB_pointer,
-	#													username   => $username,
-	#													password   => $password,
-	#);
-	#exit;
-
-#	my $old_fam_dir	=Sfam_updater::launch_sifting::build_aln_hmm_trees( directory => $tmp_data."/old_fams",
-#												repo      => $data_repo,
-#												total_jobs => 200,
-#												type => 'old',
-#												output => $tmp_data."old_fams",
-#												error => $tmp_data."aln_hmm_trees_old",
-#												 );
-#	exit;
-	#De novo alignment for $tmp_data/new_fams files
-	#my $new_fam_dir = Sfam_updater::launch_sifting::build_aln_hmm_trees(
-	#																	 directory  => $tmp_data."/new_fams",
-	#																	 repo       => $data_repo,
-	#																	 total_jobs => 200,
-	#																	 type       => 'new',
-	#																	 output     => $tmp_data."new_fams",
-	#																	 error      => $tmp_data."aln_hmm_trees_new",
-	#);
 	## Insert tree into DB
 #	my $new_fam_dir = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_dir/test_dir/new_fams";
 	my $new_fam_dir = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/new_fams";
