@@ -309,11 +309,10 @@ sub index_hmms {
 		my @array_fam = @{$fam};
 		$count++;
 		if ( $count % $div_size == 0 ) {
-			close(OUT);
 			$div++;
 		}
-		print STDERR "zcat $data_repository/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm\n";
-		`zcat $data_repository/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm`;
+		print STDERR "zcat $data_repository/FC_$array_fam[1]/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm\n";
+		`zcat $data_repository/FC_$array_fam[1]/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm`;
 	}
 	return ( $count, $output_dir."/HMMs" );
 }
@@ -326,7 +325,6 @@ sub parse_mcl {
 	my $db              = $args{db};
 	my $username        = $args{username};
 	my $password        = $args{password};
-
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
 	my $analysis = MRC->new();
@@ -338,7 +336,6 @@ sub parse_mcl {
 	open( FAM_MAPPING, ">$output_dir" . "/mcl_newCDS_to_fam.map" ) || die "Can't open $output_dir/mcl_newCDS_to_fam.map for writing: $!\n";
 	my $familyconstruction_id = $analysis->MRC::DB::get_max_familyconstruction_id();
 	print STDERR "Family construction ID used : $familyconstruction_id\n";
-
 	while (<MCL_IN>) {
 		chomp($_);
 		my @gene_oids = split( /\t/, $_ );      #1 family per line, gene_oids separated by tabs
@@ -363,7 +360,7 @@ sub parse_mcl {
 	}
 	close(MCL_IN);
 	close(FAM_MAPPING);
-
+	
 	#insert into family
 	#get max famID
 	#use famiID to write out familymembers to file
