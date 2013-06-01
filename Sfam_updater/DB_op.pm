@@ -392,6 +392,7 @@ sub print_fc_range{
 	my $username = $args{username};
 	my $password = $args{password};
 	my $db_pointer = $args{db};
+	my $analysis = MRC->new();
 	$analysis->set_dbi_connection($db_pointer);
 	$analysis->set_username($username);
 	$analysis->set_password($password);
@@ -400,12 +401,12 @@ sub print_fc_range{
 	my %low=();
 	my %high=();
 	while(my $fam = $fams->next()){
-		my $fc = $seq->get_column('familyconstruction_id')};
-		my $famid = $seq->get_column('famid')};
-		$low{$fc} = $famid unless defined $low{$fc};
-    	$high{$fc} = $famid unless defined $high{$fc};
-    	$low{$fc} = $famid if $low{$fc} > $famid;
-    	$high{$fc} = $famid if $high{$fc} < $famid;
+	    my $fc     = $fam->get_column('familyconstruction_id');
+	    my $famid  = $fam->get_column('famid');
+	    $low{$fc}  = $famid unless defined $low{$fc};
+	    $high{$fc} = $famid unless defined $high{$fc};
+	    $low{$fc}  = $famid if $low{$fc} > $famid;
+	    $high{$fc} = $famid if $high{$fc} < $famid;
 	}
 	open(OUT,">$output_dir/fc_range.txt");
 	foreach my $fc (keys %high){
