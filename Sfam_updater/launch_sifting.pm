@@ -8,7 +8,7 @@ use Carp;
 use Data::Dumper;
 
 my $LASTDB_SIZE    = "900M";
-my $SLEEP_DURATION = 300;
+my $SLEEP_DURATION = 30;
 my $MINI_SLEEP     = 0.5;
 my $DIV_SIZE       = 1000000;    #how many sequences will be written to 1 file for the sifting;
 
@@ -380,21 +380,20 @@ sub fine_tune_representative_picking {
 	my $rep_threshold   = $args{rep_threshold};
 	my @files           = <$reps_dir/*.abc>;
 	foreach my $file (@files) {
-		next if $file !~ m/\/(\d+).abc/;
+		next if $file !~ m/$reps_dir\/(.*?).abc/;
 		my $core = $1;
 		if ( !-z $file ) {
 			if ( !-e "$reps_dir/$core.mcl.log" ) {
 				print "Initializing reps for $core\n";
-				print "perl Sfam_updater/pick_rep_by_mcl.pl -i $reps_dir/$core.abc -o $reps_dir/$core.mcl -c 99 -m $mcl_redunt_path -g $get_link_path\n";
-				`perl Sfam_updater/pick_rep_by_mcl.pl -i $reps_dir/$core.abc -o $reps_dir/$core.mcl -c 99 -m $mcl_redunt_path -g $get_link_path`;
+				print "perl Sfam_updater/pick_rep_by_mcl.pl -i $reps_dir/$core.abc -o $reps_dir/$core.mcl -n $rep_threshold -c 99 -m $mcl_redunt_path -g $get_link_path\n";
+				`perl Sfam_updater/pick_rep_by_mcl.pl -i $reps_dir/$core.abc -o $reps_dir/$core.mcl -n $rep_threshold -c 99 -m $mcl_redunt_path -g $get_link_path`;
 			}
 			print "Done initializing reps $core\n";
-			my $rep_count = 10000;
-			while ( $rep_count > 250 ) {
+			my $rep_count = 10000; #i think this is an arbitrary high value to make the rest work
+			while ( $rep_count > $rep_threshold ) {
 				open( inFILE, "$reps_dir/$core.mcl.log" );
 				while (<inFILE>) {
 					if ( $_ =~ m/number_of_rep/ ) {
-
 						#do nothing
 					} elsif ( $_ =~ m/Final: (\d+)\s+(\d+)/ ) {
 						$rep_count = $1;
@@ -410,6 +409,7 @@ sub fine_tune_representative_picking {
 						`perl Sfam_updater/pick_rep_by_mcl.pl -i $reps_dir/$core.parsed -o $reps_dir/$core.mcl -c 99 -m $mcl_redunt_path -g $get_link_path`;
 					}
 				}
+				close inFILE;
 			}
 		}
 	}
@@ -916,6 +916,14 @@ sub build_aln_hmm_trees {
 	my $error_dir       = $args{error};
 	my $total_jobs      = $args{total_jobs};
 	my $data_repository = $args{repo};
+	my $alias           = 0;
+	if( defined($args{alias}) ){
+	    $alias = $args{alias};
+	}
+	my $stem            = "_newCDS.fasta";
+	if( defined($args{stem}) ){
+	    $stem = $args{stem};
+	}
 	my $machine;
 	if( defined($args{machine})){
 	    $machine = $args{machine};
@@ -924,21 +932,44 @@ sub build_aln_hmm_trees {
 	##if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
-	print $directory."/*_new"."CDS.fasta\n";
-	my @files = glob( $directory."/*_new"."CDS.fasta" );
 	#if the error_dir does not exists create it.
 	print "Creating $error_dir\n" unless -e $error_dir;
 	`mkdir -p $error_dir`         unless -e $error_dir;
+
+	my %map = ();
+	my @perm_files = glob( $directory."/*".$stem );
+	if( $alias ){
+	    my $count = 1;
+	    foreach my $file( @perm_files ){
+		next unless ( $file =~ m/$directory\/(.*?)$stem/ );
+		my $famid = $1;		   
+		my $tmp_file = $directory. "/" . $count . "_newCDS.fasta";
+		`cp $file $tmp_file`;
+		#need to see if a rep file exists
+		my $rep_dir  = $directory . "/representatives/";
+		my $rep_file = $rep_dir . $famid . ".rep.fasta"; 
+		if( -e $rep_file ){
+		    my $tmp_rep = $rep_dir . $count . ".rep_newCDS.fasta";
+		    `cp $rep_file $tmp_rep`;
+		}
+		$map{$file} = $count;
+		$count++;
+	    }
+	}
+	my @files = glob( $directory."/*_new"."CDS.fasta" );
 	my $low_file  = undef;
 	my $high_file = 0;
 	foreach my $file (@files) {
-		$file =~ m/\/(\d+)_.*CDS.fasta/;
-		$low_file  = $1 if ( !defined $low_file );
-		$low_file  = $1 if $low_file > $1;
-		$high_file = $1 if $high_file < $1;
+	    print $file . "\n";
+	    $file =~ m/\/(\d+)_.*CDS.fasta/;
+	    #$file =~ m/$directory\/(.*?)*$stem/;
+	    $low_file  = $1 if ( !defined $low_file );
+	    $low_file  = $1 if $low_file > $1;
+	    $high_file = $1 if $high_file < $1;
 	}
 	my $end_array_job = $low_file + $total_jobs - 1;
 	my $remote_output_dir = $output_dir;
+	my $loc_directory     = $directory;
 	if( $machine eq "chef" ){
 	    #convert the file paths from shattuck to chef paths. e.g.
 	    #/mnt/data/work/pollardlab
@@ -951,7 +982,7 @@ sub build_aln_hmm_trees {
 	    $error_dir         = convert_local_path_to_remote( $error_dir,         $shattuck_path, $chef_path );
 	    $data_repository   = convert_local_path_to_remote( $data_repository,   $shattuck_path, $chef_path );
 	}
-	`cp external_software_launcher.pl $remote_output_dir`;
+	`cp external_software_launcher.pl $output_dir`;
 	my $cmd = "perl $remote_output_dir/external_software_launcher.pl $type \$SGE_TASK_ID $high_file $total_jobs $directory _newCDS.fasta $remote_output_dir $data_repository";
 	print "$cmd\n";
 	print "Lowfile :$low_file\tHigh file : $high_file\n";
@@ -971,7 +1002,7 @@ sub build_aln_hmm_trees {
 	if( $machine eq "chef" ){ 
 	        print OUT "
 #\$ -l arch=linux-x64
-#\$ -l h_rt=0:30:0
+#\$ -l h_rt=336:00:0
 #\$ -l scratch=0.25G
 #\$ -r y
 
@@ -1000,17 +1031,61 @@ $cmd
 	    $qsub         = `$qsub_command`;
 	}
 	$qsub =~ /Your job\-array (\d+)/;
-	my $job_id = $1;
+	my $jobid = $1;
 	my $flag   = 1;
 
 	while ($flag) {
 		sleep($SLEEP_DURATION);
-		my $output = `qstat -j $job_id`;
-		if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
-			$flag = 0;
+		my $output;
+		if( $machine eq "chef" ){
+		    #can't use IPC module because we want the exit(1) error!
+		    $output = `ssh chef.compbio.ucsf.edu qstat -j $jobid`;
+		}
+		else{
+		    $output = `qstat -j $jobid`;
+		}
+		#Following jobs do not exist
+		if ( !defined($output) || $output =~ m/^Following/ || $output eq '') {
+		    $flag = 0;
 		}
 	}
+	if( $alias ){ #cleanup	    
+	    foreach my $file( @perm_files ){
+		print "file is $file\n";
+		($file =~ m/$loc_directory\/(.*?)$stem/ ) || die "Can't get famid from $file!\n";
+		my $famid  = $1;
+		my $count  = $map{$file};
+		print "famid: $famid   count: $count\n";
+		mv_alias_file( $loc_directory."/", $famid, $count, "_newCDS.fasta" );
+		my $tree_dir = $loc_directory."/new_fams/trees/";
+		mv_alias_file( $tree_dir, $famid, $count, ".tree" );
+		my $hmm_dir = $loc_directory."/new_fams/HMMs/";
+		mv_alias_file( $hmm_dir, $famid, $count, ".hmm.gz" );
+		my $aln_dir = $loc_directory."/new_fams/alignments/";
+		mv_alias_file( $aln_dir, $famid, $count, ".aln" );
+		my $rep_dir = $loc_directory."/representatives/";
+		mv_alias_file( $rep_dir, $famid, $count, ".rep.aln" );
+		mv_alias_file( $rep_dir, $famid, $count, ".rep_newCDS.fasta" );
+		my $seed_hmm_dir = $loc_directory."/new_fams/seedHMMs/";
+		mv_alias_file( $seed_hmm_dir, $famid, $count, ".seed.hmm" );
+		my $aln_stock_dir = $loc_directory."/new_fams/alignments_stock/";
+		mv_alias_file( $aln_stock_dir, $famid, $count, ".stock" );
+	    }
+	}
 	return $output_dir;
+}
+
+sub mv_alias_file{
+    my ( $dir, $famid, $count, $suffix ) = @_;
+    my $alias_file = $dir . $count . $suffix;
+    my $perm_file  = $dir . $famid . $suffix;
+    print "alias: $alias_file\n";
+    print "perm: $perm_file\n";
+    if( -e $alias_file ){
+	print "Moving $alias_file to $perm_file\n";
+	`mv $alias_file $perm_file`;
+    }
+    return $perm_file;
 }
 
 sub execute_ssh_cmd{

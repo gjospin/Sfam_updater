@@ -202,32 +202,31 @@ sub generate_representative_fasta{
 
 
 sub generate_representative_fasta_nosql{
-	my %args = @_;
-	my $output_dir = $args{output_dir};
-	my $rep_dir    = $args{representative_dir};	
-	my $fasta_stem = $args{fasta_stem};
-	my @mcl_files = <$rep_dir/*.mcl>;
-	foreach my $file(@mcl_files){
-		next unless -s $file; 
-		$file =~ m/\/(.*).mcl/;
-		my $famid = $1;
-		open(IN,$file);
-		my $seq_in  = Bio::SeqIO->new( -file => $output_dir . "/" . $famid . $fasta_stem, -format => 'fasta' );
-		my %seq_tab = ();
-		while( my $seq = $seq_in->next_seq ){
-		    my $id        = $seq->display_id;
-		    $seq_tab{$id} = $seq;
-		}
-		my $seq_out = Bio::SeqIO->new( -file => ">$output_dir/$1.rep.fasta", -format => 'fasta' );
-		open(OUT,);
-		while(<IN>){
-			chomp($_);
-			print "grabbing gene_oid $_\n";
-			$seq_out->write_seq( $seq_tab{$_} );
-		}
-		close(IN);
-		close(OUT);
+    my %args = @_;
+    my $output_dir = $args{output_dir};
+    my $rep_dir    = $args{representative_dir};	
+    my $fasta_stem = $args{fasta_stem};
+    my @mcl_files = <$rep_dir/*.mcl>;
+    foreach my $file(@mcl_files){
+	next unless -s $file; 
+	$file =~ m/$rep_dir\/(.*?).mcl/;
+	my $famid = $1;
+	print $famid . "\n";
+	open(IN,$file);
+	my $seq_in  = Bio::SeqIO->new( -file => $output_dir . "/" . $famid . $fasta_stem, -format => 'fasta' );
+	my %seq_tab = ();
+	while( my $seq = $seq_in->next_seq ){
+	    my $id        = $seq->display_id;
+	    $seq_tab{$id} = $seq;
 	}
+	my $seq_out = Bio::SeqIO->new( -file => ">$rep_dir/$1.rep.fasta", -format => 'fasta' );
+	while(<IN>){
+	    chomp($_);
+	    print "grabbing gene_oid $_\n";
+	    $seq_out->write_seq( $seq_tab{$_} );
+	}
+	close(IN);
+    }
 }
 
 sub prep_families_for_representative_picking{
@@ -316,31 +315,32 @@ sub prep_families_for_representative_picking_nosql_nopremcl{
 	    $map{$fam_file} = $count;
 	    $count++;
 	}
-	#$output_dir/blast_output_$count.tblout
-	my $blast_results_core = Sfam_updater::launch_sifting::launch_blast( output_dir             => "$rep_dir",
-									     blast_input_files_core => "$rep_dir/tmp_fasta/tmp_rep_fasta",
-									     arguments              => $blast_args,
-									     error_dir              => "$rep_dir/blast_err_dir",
-									     threads                => $threads,
-									     machine                => "chef",
-									     array                  => 0,
-	    );
-	foreach my $fam_file( @rep_fams ){
-	    ($fam_file =~ m/$output_dir\/(.*?)$fasta_stem/ ) || die "Can't get famid from $fam_file!\n";
-	    my $famid  = $1;
-	    my $blast_results      = $blast_results_core . "_" . $map{$fam_file} . ".tblout";
-	    my $perm_blast_results = $rep_dir . $famid . ".tblout";
-	    `mv $blast_results $perm_blast_results`;	    
-	    my $blast_seqs_lengths = Sfam_updater::launch_sifting::compile_sequence_length_hash( file2 => $fam_file );
-	    my $mcl_file = Sfam_updater::launch_sifting::parse_blast(
-		output_dir         => "$rep_dir",
-		blast_results_core => $perm_blast_results,
-		coverage           => 0.8,
-		evalue             => "1e-10",
-		seq_lengths        => $blast_seqs_lengths,
-		factor_pid         => 100,
-		mcl_stem           => $famid . "_mcl_input",
+	if( scalar( @rep_fams ) >= 1 ){
+	    my $blast_results_core = Sfam_updater::launch_sifting::launch_blast( output_dir             => "$rep_dir",
+										 blast_input_files_core => "$rep_dir/tmp_fasta/tmp_rep_fasta",
+										 arguments              => $blast_args,
+										 error_dir              => "$rep_dir/blast_err_dir",
+										 threads                => $threads,
+										 machine                => "chef",
+										 array                  => 0,
 		);
+	    foreach my $fam_file( @rep_fams ){
+		($fam_file =~ m/$output_dir\/(.*?)$fasta_stem/ ) || die "Can't get famid from $fam_file!\n";
+		my $famid  = $1;
+		my $blast_results      = $blast_results_core . "_" . $map{$fam_file} . ".tblout";
+		my $perm_blast_results = $rep_dir . $famid . ".tblout";
+		`mv $blast_results $perm_blast_results`;	    
+		my $blast_seqs_lengths = Sfam_updater::launch_sifting::compile_sequence_length_hash( file2 => $fam_file );
+		my $mcl_file = Sfam_updater::launch_sifting::parse_blast(
+		    output_dir         => "$rep_dir",
+		    blast_results_core => $perm_blast_results,
+		    coverage           => 0.8,
+		    evalue             => "1e-10",
+		    seq_lengths        => $blast_seqs_lengths,
+		    factor_pid         => 100,
+		    mcl_stem           => $famid . "_mcl_input",
+		    );
+	    }
 	}
 #	`rm -r $rep_dir/tmp_fasta/`;
 	return $rep_dir;

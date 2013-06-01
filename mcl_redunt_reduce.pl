@@ -54,6 +54,7 @@ close OUT;
 my $cmd=$mcl." $tmp_link --abc -I 2.0 -o $tmp_cluster";
 
 print $cmd . "\n";
+
 system $cmd;
 
 open(IN,$tmp_cluster) || die "cannot open file $tmp_cluster\n";

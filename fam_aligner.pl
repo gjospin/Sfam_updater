@@ -27,7 +27,6 @@ GetOptions(
 
 print "Processing data in $tmp_data\n";
 
-#REP PICKING NEEDS TO BE DONE ON REMOTE SERVER
 my $representatives_dir = Sfam_updater::DB_op::prep_families_for_representative_picking_nosql_nopremcl(
     output_directory => $tmp_data,
     rep_threshold    => $rep_threshold,	
@@ -35,10 +34,6 @@ my $representatives_dir = Sfam_updater::DB_op::prep_families_for_representative_
     threads          => $threads,
     fasta_stem       => ".fa",
     );
-
-#my $representatives_dir = $tmp_data."/new_fams/representatives";
-
-die;
 
 Sfam_updater::launch_sifting::fine_tune_representative_picking( 
     reps_dir        => $representatives_dir,
@@ -59,6 +54,9 @@ my $new_fam_dir = Sfam_updater::launch_sifting::build_aln_hmm_trees(
     repo       => $tmp_data,
     total_jobs => 200,
     type       => 'new',
-    output     => $tmp_data."new_fams",
-    error      => $tmp_data."aln_hmm_trees_new",
+    output     => $tmp_data."/new_fams",
+    error      => $tmp_data."/aln_hmm_trees_new",
+    stem       => ".fa",
+    alias      => 1,
+    machine    => "chef",
     );
