@@ -386,6 +386,33 @@ sub add_new_family_members {
 
 	close(IN);
 }
+sub print_fc_range{
+	my %args = @_;
+	my $output_dir = $args{output_dir};
+	my $username = $args{username};
+	my $password = $args{password};
+	my $db_pointer = $args{db};
+	$analysis->set_dbi_connection($db_pointer);
+	$analysis->set_username($username);
+	$analysis->set_password($password);
+	$analysis->build_schema();
+	my $fams = $analysis->get_schema->resultset("Family");
+	my %low=();
+	my %high=();
+	while(my $fam = $fams->next()){
+		my $fc = $seq->get_column('familyconstruction_id')};
+		my $famid = $seq->get_column('famid')};
+		$low{$fc} = $famid unless defined $low{$fc};
+    	$high{$fc} = $famid unless defined $high{$fc};
+    	$low{$fc} = $famid if $low{$fc} > $famid;
+    	$high{$fc} = $famid if $high{$fc} < $famid;
+	}
+	open(OUT,">$output_dir/fc_range.txt");
+	foreach my $fc (keys %high){
+    	print $fc."\t".$low{$fc}."\t".$high{$fc}."\n";
+	}
+	close(OUT);
+}
 
 sub get_all_famid{
 	my %args = @_;
@@ -393,7 +420,7 @@ sub get_all_famid{
 	my $password = $args{password};
 	my $db_pointer = $args{db};
 	my $DB = DBI->connect( $db_pointer, "$username", "$password" ) or die "Couldn't connect to database : ".DBI->errstr;
-	my $results_ref = $DB->selectall_arrayref('SELECT famid FROM family WHERE 1');
+	my $results_ref = $DB->selectall_arrayref('SELECT famid, familyconstruction_id FROM family WHERE 1');
 	return $results_ref;
 }
 
