@@ -300,9 +300,9 @@ sub index_hmms {
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
 	my $famids_array_ref = Sfam_updater::DB_op::get_all_famid(
-															   db       => $db_pointer,
-															   username => $username,
-															   password => $password,
+	    db       => $db_pointer,
+	    username => $username,
+	    password => $password,
 	);
 	$div_size = int( scalar @{$famids_array_ref} / $number_of_files ) if defined $number_of_files;
 	foreach my $fam ( @{$famids_array_ref} ) {
@@ -312,8 +312,11 @@ sub index_hmms {
 			close(OUT);
 			$div++;
 		}
-		print STDERR "zcat $data_repository/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm\n";
-		`zcat $data_repository/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm`;
+
+		print STDERR "zcat $data_repository/FC_$array_fam[1]/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm\n";
+		`zcat $data_repository/FC_$array_fam[1]/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm`;
+		#print STDERR "zcat $data_repository/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm\n";
+		#`zcat $data_repository/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm`;
 	}
 	return ( $count, $output_dir."/HMMs" );
 }
