@@ -17,10 +17,12 @@ my (
 	 $genome_download_dir,    $genome_file,          $tmp_data,                 $sifting_lastal_db,    $lastal_results_core,
 	 $lastal_leftovers_core,  $CDS_length_hash_ref,  $lastal_new_familymembers, $hmm_file_core,        $number_of_hmms,
 	 $hmmsearch_results_core, $total_files_to_blast, $core_file_to_blast,       $author,               $description,
-	 $name,                   $data_repo,            $rep_threshold,
+	 $name,                   $data_repo,            $rep_threshold,            $skip_hmm_index,
 );
 my $threads            = 2;      #default hmmsearch_thread
 my $path_to_sfams_repo = "./";
+
+my $family_construction_id;
 
 #my $DB_pointer  = "DBI:mysql:Sfams:lighthouse.ucsf.edu";#my $DB_pointer = "DBI:mysql:SFams";
 my $DB_pointer = "DBI:mysql:SFams_dev";
@@ -29,6 +31,7 @@ GetOptions(
     "skip-index"      => \$skip_index,
     "skip-sifting"    => \$skip_sifting,
     "skip-DB-inserts" => \$skip_DB_inserts,
+    "skip-hmm-index"  => \$skip_hmm_index,
     "u=s"             => \$username,
     "p=s"             => \$password,
     "db=s"            => \$DB_pointer,
@@ -41,6 +44,7 @@ GetOptions(
     "description=s"   => \$description,
     "name=s"          => \$name,
     "rep-thresh=i"    => \$rep_threshold,
+    "fci:i"           => \$family_construction_id, #if not defined, we autoset a new one.
     );
 
 die "Please provide a name for the new family construction using --name\n"                   unless defined($name);
@@ -58,14 +62,16 @@ if ( !defined($password) ) {
 }
 
 #first thing, create a familyconstruction row
-my $family_construction_id = Sfam_updater::DB_op::insert_fc(
-    username    => $username,
-    password    => $password,
-    db          => $DB_pointer,
-    author      => $author,
-    description => $description,
-    name        => $name
-    );
+if( !defined( $family_construction_id ) ){
+    $family_construction_id = Sfam_updater::DB_op::insert_fc(
+	username    => $username,
+	password    => $password,
+	db          => $DB_pointer,
+	author      => $author,
+	description => $description,
+	name        => $name
+	);
+}
 
 # Read IMG excel spreadsheet and download new genomes
 # Insert new genomes and genes information in the DB
@@ -160,14 +166,16 @@ unless ($skip_sifting) {
     
     
     #this is just for trouble shooting, elim this statement when running for real!
-    ( $number_of_hmms, $hmm_file_core ) = Sfam_updater::launch_sifting::index_hmms(
-	db         => $DB_pointer,
-	username   => $username,
-	password   => $password,
-	output_dir => $tmp_data."/hmmsearch",
-	file_size  => 2000,
-	repo       => $data_repo
-	);
+    unless( $skip_hmm_index ){
+	( $number_of_hmms, $hmm_file_core ) = Sfam_updater::launch_sifting::index_hmms(
+	    db         => $DB_pointer,
+	    username   => $username,
+	    password   => $password,
+	    output_dir => $tmp_data."/hmmsearch",
+	    file_size  => 2000,
+	    repo       => $data_repo
+	    );
+    }
     
     #$lastal_leftovers_core = "/share/eisen-z2/gjospin/Sfam_updater/test_dir/lastal_leftovers.fasta";
     
@@ -182,6 +190,13 @@ unless ($skip_sifting) {
     #$number_of_hmms    = 10;
     
     #need to go into the script creation process and fix the run-time settings, which are currently set to short.q for testing.
+    if( $skip_index ){
+	$core_file_to_sift = "${tmp_data}/newCDS_1.fasta"; 
+    }
+    if( $skip_hmm_index ){
+	$hmm_file_core    = "${tmp_data}/hmmsearch/HMMs";
+	$number_of_hmms   = count_hmms( $hmm_file_core );
+    }
     $hmmsearch_results_core = Sfam_updater::launch_sifting::launch_hmmsearch(
 	hmmfiles   => $hmm_file_core,
 	seq_files  => $core_file_to_sift,
@@ -342,7 +357,7 @@ unless ($skip_sifting) {
     
     ## Insert tree into DB
     #	my $new_fam_dir = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_dir/test_dir/new_fams";
-    my $new_fam_dir = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/new_fams";
+    #my $new_fam_dir = "/home/gjospin/proteinFamilies/Sfam_updater/merlot_test/test_dir/new_fams";
 #>>>>>>> ee06a0ca8ed336755e0bdd20fb85f88979d38c9e
     Sfam_updater::DB_op::insert_trees_hmms_alignments(
 	directory           => $new_fam_dir,
@@ -452,4 +467,17 @@ sub prepare_data_directory {
 		my $interpro = $function."/interpro";
 		`mkdir -p $interpro`unless -e $interpro;
 	}
+}
+
+sub count_hmms{
+    my $hmm_file_core  = shift;
+    my $number_of_hmms = 0;
+    my @files = glob( "${hmm_file_core}*" );
+    foreach my $file( @files ){
+	my $count = `grep -c "NAME" $file`;
+	chomp $count;
+	$number_of_hmms += $count;
+    }
+    print "Found $number_of_hmms HMMs\n";
+    return $number_of_hmms;
 }

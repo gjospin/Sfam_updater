@@ -6,6 +6,7 @@ use Bio::SeqIO;
 use IPC::System::Simple qw(capture $EXITVAL);
 use Carp;
 use Data::Dumper;
+use File::Basename;
 
 my $LASTDB_SIZE    = "900M";
 my $SLEEP_DURATION = 30;
@@ -313,8 +314,8 @@ sub index_hmms {
 			$div++;
 		}
 
-		print STDERR "zcat $data_repository/FC_$array_fam[1]/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm\n";
-		`zcat $data_repository/FC_$array_fam[1]/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm`;
+		print STDERR "zcat $data_repository/FC_$array_fam[1]/hmms_full/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm\n";
+		`zcat $data_repository/FC_$array_fam[1]/hmms_full/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm`;
 		#print STDERR "zcat $data_repository/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm\n";
 		#`zcat $data_repository/$array_fam[0].hmm.gz >> $output_dir/HMMs_$div.hmm`;
 	}
@@ -348,11 +349,11 @@ sub parse_mcl {
 		my $family_size = scalar(@gene_oids);
 		next if $family_size <= 1;              #ignore singletons
 		my (
-			 $fam_alt_id, $name,          $description,      $alnpath,  $seed_alnpath, $hmmpath,
-			 $reftree,    $alltree,       $universality,     $evenness, $arch_univ,    $bact_univ,
-			 $euk_univ,   $unknown_genes, $pathogen_percent, $aquatic_percent
-		  )
-		  = undef;
+		    $fam_alt_id, $name,          $description,      $alnpath,  $seed_alnpath, $hmmpath,
+		    $reftree,    $alltree,       $universality,     $evenness, $arch_univ,    $bact_univ,
+		    $euk_univ,   $unknown_genes, $pathogen_percent, $aquatic_percent
+		    )
+		    = undef;
 		$analysis->MRC::DB::insert_family(
 										   $familyconstruction_id, $fam_alt_id,       $name,      $description, $alnpath,
 										   $seed_alnpath,          $hmmpath,          $reftree,   $alltree,     $family_size,
@@ -757,14 +758,21 @@ sub launch_hmmsearch {
 	#/mnt/data/work/pollardlab
 	#to
 	#/pollard/shattuck0	    
-	my $shattuck_path = '/mnt/data/work/pollardlab/';
-	my $chef_path     = '/pollard/shattuck0/';
-	$seqs           = convert_local_path_to_remote( $seqs, $shattuck_path, $chef_path );
-	$hmm_files_core = convert_local_path_to_remote( $hmm_files_core, $shattuck_path, $chef_path );
+	my $shattuck_path  = '/mnt/data/work/pollardlab/';
+	#my $chef_path      = '/pollard/shattuck0/';
+	my $chef_path      = '/scrapp2/sharpton/sfam_updater/';
+	my $verbose        = 1;	
+	#push the data to the remote path
+	remote_transfer( $seqs,              $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	remote_transfer( $hmm_files_core,    $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	remote_transfer( $remote_output_dir, $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	remote_transfer( $error_dir,         $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	#prep the vars for the qsub script
+	$seqs              = convert_local_path_to_remote( $seqs, $shattuck_path, $chef_path );
+	$hmm_files_core    = convert_local_path_to_remote( $hmm_files_core, $shattuck_path, $chef_path );
 	$remote_output_dir = convert_local_path_to_remote( $remote_output_dir, $shattuck_path, $chef_path );
-	$error_dir = convert_local_path_to_remote( $error_dir, $shattuck_path, $chef_path );
+	$error_dir         = convert_local_path_to_remote( $error_dir, $shattuck_path, $chef_path );
     }
-    
     
     my $hmmsearch_cmd =
 	"hmmsearch --cpu $hmmsearch_threads $arguments --domtblout $remote_output_dir/hmmsearch_sift.ouput.\$SGE_TASK_ID $hmm_files_core"."_\$SGE_TASK_ID.hmm $seqs";
@@ -782,7 +790,7 @@ sub launch_hmmsearch {
     if( $machine eq "chef" ){ 
 	print OUT "
 #\$ -l arch=linux-x64
-#\$ -l h_rt=0:30:0
+#\$ -l h_rt=336:00:0
 #\$ -l scratch=0.25G
 #\$ -r y
 #\$ -pe smp $hmmsearch_threads
@@ -798,16 +806,19 @@ sub launch_hmmsearch {
     
     #make sure that the remote cluster can access the data and submission script
     if( $machine eq "chef" ){
-	#assume that the cluster can read the files directly from our db server
-	#for shattuck, need to have the data and script in the folowing location on shattuck
-	#/mnt/data/work/pollardlab
-	#chef will see this as the following location
-	#/pollard/shattuck0	    
+	my $qsubpath = "$output_dir/hmmsearch_sift.sh";
+	my $shattuck_path  = '/mnt/data/work/pollardlab/';
+	my $chef_path      = '/scrapp2/sharpton/sfam_updater/';
+	remote_transfer( $qsubpath, $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	$qsubpath    = convert_local_path_to_remote( $qsubpath, $shattuck_path, $chef_path );	
     }
     else{
 	warn("In launch_sifting::launch_hmmsearch - Can't launch the remote job because you have yet to build the module that pushes the data to your remote cluster!\n");
 	exit(0);
     }
+
+    die;
+
     my $qsub_command;
     my $qsub;
     my $job_id;
@@ -836,6 +847,20 @@ sub launch_hmmsearch {
 	if ( !defined($output) || $output =~ /Following jobs do not exist/ ) {
 	    $flag = 0;
 	}
+    }
+
+    #get remote results
+    if( $machine eq "chef" ){
+	my $shattuck_path  = '/mnt/data/work/pollardlab/';
+	#my $chef_path      = '/pollard/shattuck0/';
+	my $chef_path      = '/scrapp2/sharpton/sfam_updater/';
+	my $verbose        = 1;	
+	#push the data to the remote path
+	remote_pull( $seqs,              $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	remote_pull( $hmm_files_core,    $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	remote_pull( $remote_output_dir, $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	remote_pull( $error_dir,         $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	remote_pull( $qsubpath,          $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
     }
     return "$output_dir/hmmsearch_sift.ouput";
 }
@@ -1101,4 +1126,34 @@ sub execute_ssh_cmd{
     my $results     = IPC::System::Simple::capture("$sshOptions $remote_cmd");
     (0 == $EXITVAL) or die( "Error running this ssh command: $sshOptions $remote_cmd: $results" ) unless ( $quiet );
     return $results; ## <-- this gets used! Don't remove it.
+}
+
+sub remote_transfer{
+    my( $object, $lpath, $rpath, $rhost ) = @_;
+    my $verbose = 1;
+    my ($filename,$pathname,$suffix) = fileparse($object);
+    print join( "\t", $filename, $pathname, "\n" );
+    #create the remote directory
+    my $r_pathname = convert_local_path_to_remote( $pathname, $lpath, $rpath );    
+    print "$r_pathname\n";
+    execute_ssh_cmd( $rhost, "mkdir -p $r_pathname", $verbose );
+    #transfer the files
+    my $command = "rsync -avP --compress --times --perms ${object}* ${rhost}:${r_pathname}";
+    print "$command\n";
+    system( $command );    
+}
+
+sub remote_pull{
+   my( $object, $lpath, $rpath, $rhost ) = @_;
+    my $verbose = 1;
+    my ($filename,$pathname,$suffix) = fileparse($object);
+    print join( "\t", $filename, $pathname, "\n" );
+    #create the remote directory
+    my $l_pathname = convert_local_path_to_remote( $pathname, $rpath, $lpath );    
+    print "$l_pathname\n";
+    #execute_ssh_cmd( $rhost, "mkdir -p $r_pathname", $verbose );
+    #transfer the files
+    my $command = "rsync -avP --compress --times --perms ${rhost}:${object}* $l_pathname";
+    print "$command\n";
+    system( $command );    
 }
