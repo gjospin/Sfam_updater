@@ -448,7 +448,7 @@ sub launch_mcl {
 	#if the output_dir does not exists create it.
 	print "Creating $output_dir\n" unless -e $output_dir;
 	`mkdir -p $output_dir`         unless -e $output_dir;
-	my $mcl_cmd = "mcl $input_file $mcl_params -te $threads --abc -o $remote_output_dir/mcl_ouput.mcl";
+	my $mcl_cmd = "mcl $input_file $mcl_params -te $threads --abc -o $remote_output_dir/mcl_output.mcl";
 	open( OUT, ">$output_dir/mcl_job.sh" ) || die "Can't open $output_dir/mcl_job.sh for writing: $!\n";
 	print OUT "
 #!/bin/sh
@@ -775,7 +775,7 @@ sub launch_hmmsearch {
     }
     
     my $hmmsearch_cmd =
-	"hmmsearch --cpu $hmmsearch_threads $arguments --domtblout $remote_output_dir/hmmsearch_sift.ouput.\$SGE_TASK_ID $hmm_files_core"."_\$SGE_TASK_ID.hmm $seqs";
+	"hmmsearch --cpu $hmmsearch_threads $arguments --domtblout $remote_output_dir/hmmsearch_sift.output.\$SGE_TASK_ID $hmm_files_core"."_\$SGE_TASK_ID.hmm $seqs";
     open( OUT, ">$output_dir/hmmsearch_sift.sh" ) || die "Can't open $output_dir/lastal_sift.sh for writing: $!\n";
     print OUT "
 #!/bin/sh
@@ -794,6 +794,7 @@ sub launch_hmmsearch {
 #\$ -l scratch=0.25G
 #\$ -r y
 #\$ -pe smp $hmmsearch_threads
+#\$ -l mem_free=10G
 
 ";
     }
@@ -816,8 +817,6 @@ sub launch_hmmsearch {
 	warn("In launch_sifting::launch_hmmsearch - Can't launch the remote job because you have yet to build the module that pushes the data to your remote cluster!\n");
 	exit(0);
     }
-
-    die;
 
     my $qsub_command;
     my $qsub;
@@ -855,14 +854,11 @@ sub launch_hmmsearch {
 	#my $chef_path      = '/pollard/shattuck0/';
 	my $chef_path      = '/scrapp2/sharpton/sfam_updater/';
 	my $verbose        = 1;	
-	#push the data to the remote path
-	remote_pull( $seqs,              $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
-	remote_pull( $hmm_files_core,    $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	#pull the data from the remote path
 	remote_pull( $remote_output_dir, $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
 	remote_pull( $error_dir,         $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
-	remote_pull( $qsubpath,          $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
     }
-    return "$output_dir/hmmsearch_sift.ouput";
+    return "$output_dir/hmmsearch_sift.output";
 }
 
 sub index_familymembers {
@@ -893,7 +889,7 @@ sub launch_lastal {
 	my $filename       = $args{filename_core};
 	my $output_dir     = $args{output_dir};
 	my $error_dir      = $args{error_dir};
-	my $lastal_cmd     = "lastal $arguments -o $output_dir/last_sift.ouput.\$SGE_TASK_ID $database $filename"."_\$SGE_TASK_ID.fasta";
+	my $lastal_cmd     = "lastal $arguments -o $output_dir/last_sift.output.\$SGE_TASK_ID $database $filename"."_\$SGE_TASK_ID.fasta";
 	my @files          = glob( $filename."_*" );
 	my $number_of_jobs = scalar(@files);
 
@@ -933,7 +929,7 @@ $lastal_cmd
 			$flag = 0;
 		}
 	}
-	return "$output_dir/last_sift.ouput";
+	return "$output_dir/last_sift.output";
 }
 
 sub build_aln_hmm_trees {

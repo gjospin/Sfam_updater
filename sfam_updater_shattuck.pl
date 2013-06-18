@@ -165,7 +165,6 @@ unless ($skip_sifting) {
 #<<<<<<< HEAD
     
     
-    #this is just for trouble shooting, elim this statement when running for real!
     unless( $skip_hmm_index ){
 	( $number_of_hmms, $hmm_file_core ) = Sfam_updater::launch_sifting::index_hmms(
 	    db         => $DB_pointer,
@@ -238,8 +237,11 @@ unless ($skip_sifting) {
 	);
     
     #my $total_seqs_to_blast = 279555;
-    
+
+    die; #for testing...
+
     #need to go into the script creation process and fix the run-time settings, which are currently set to short.q for testing.
+    #need to fix data transfer
     my $blast_results_core = Sfam_updater::launch_sifting::launch_blast(
 	output_dir             => "$tmp_data/blast_results",
 	blast_input_files_core => $core_file_to_blast,
