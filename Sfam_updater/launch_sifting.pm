@@ -736,7 +736,9 @@ sub launch_hmmsearch {
     my $output_dir        = $args{output_dir};
     my $error_dir         = $args{error_dir};
     my $hmmsearch_threads = $args{threads};
+    my $skip_sifting      = $args{pull_only};
     my $machine;
+
     if( defined($args{machine})){
 	$machine = $args{machine};
     }
@@ -762,18 +764,24 @@ sub launch_hmmsearch {
 	#my $chef_path      = '/pollard/shattuck0/';
 	my $chef_path      = '/scrapp2/sharpton/sfam_updater/';
 	my $verbose        = 1;	
-	#push the data to the remote path
-	remote_transfer( $seqs,              $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
-	remote_transfer( $hmm_files_core,    $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
-	remote_transfer( $remote_output_dir, $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
-	remote_transfer( $error_dir,         $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	unless( $skip_sifting){
+	    #push the data to the remote path
+	    remote_transfer( $seqs,              $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	    remote_transfer( $hmm_files_core,    $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	    remote_transfer( $remote_output_dir, $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	    remote_transfer( $error_dir,         $shattuck_path, $chef_path, "chef.compbio.ucsf.edu" );
+	}
 	#prep the vars for the qsub script
 	$seqs              = convert_local_path_to_remote( $seqs, $shattuck_path, $chef_path );
 	$hmm_files_core    = convert_local_path_to_remote( $hmm_files_core, $shattuck_path, $chef_path );
 	$remote_output_dir = convert_local_path_to_remote( $remote_output_dir, $shattuck_path, $chef_path );
 	$error_dir         = convert_local_path_to_remote( $error_dir, $shattuck_path, $chef_path );
     }
-    
+    #skip the next block if we don't want to launch sifting jobs
+    if( $skip_sifting ){
+	goto PULL;
+    }
+    #create sifting script
     my $hmmsearch_cmd =
 	"hmmsearch --cpu $hmmsearch_threads $arguments --domtblout $remote_output_dir/hmmsearch_sift.output.\$SGE_TASK_ID $hmm_files_core"."_\$SGE_TASK_ID.hmm $seqs";
     open( OUT, ">$output_dir/hmmsearch_sift.sh" ) || die "Can't open $output_dir/lastal_sift.sh for writing: $!\n";
@@ -849,6 +857,7 @@ sub launch_hmmsearch {
     }
 
     #get remote results
+  PULL:
     if( $machine eq "chef" ){
 	my $shattuck_path  = '/mnt/data/work/pollardlab/';
 	#my $chef_path      = '/pollard/shattuck0/';
@@ -1140,7 +1149,7 @@ sub remote_transfer{
 }
 
 sub remote_pull{
-   my( $object, $lpath, $rpath, $rhost ) = @_;
+    my( $object, $lpath, $rpath, $rhost ) = @_;
     my $verbose = 1;
     my ($filename,$pathname,$suffix) = fileparse($object);
     print join( "\t", $filename, $pathname, "\n" );

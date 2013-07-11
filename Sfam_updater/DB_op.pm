@@ -39,7 +39,7 @@ sub gather_CDS {
 	my $count_statement = "SELECT COUNT(g.gene_oid) FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
 	my $prepare_statement = "SELECT g.gene_oid, g.protein FROM genes g WHERE g.type=\'CDS\' AND g.gene_oid ";
 	$prepare_statement .= "NOT " unless $old;
-	$prepare_statement .= "IN (SELECT f.gene_oid FROM familymembers f)";
+	$prepare_statement .= "IN (SELECT f.gene_oid FROM familymembers f WHERE f.gene_oid is NOT NULL)";
 	print STDERR "prepare_statement: $prepare_statement\n";
 	my $query = $DB->prepare($prepare_statement);
 	$query->execute();
@@ -91,19 +91,20 @@ sub insert_familymembers{
 	$analysis->set_password($password);
 	$analysis->build_schema();
 	print STDERR "Inserting family members\n";
+	print STDERR "Using $input_file as reference\n";
 	open(IN, $input_file) or die "Can't open $input_file for reading: $!\n";
 	my %family_sizes = ();
 	while(<IN>){
-		chomp($_);
-		next if  $_ =~ m/^#/;
-		my @line = split(/\t/,$_);
-		my $seq = $line[0];
-		my $family = $line[1];
-		my $gene = $analysis->MRC::DB::find_gene_by_gene_oid($seq);
-		open(OUT,">>$output_dir/$family"."_newCDS.fasta")|| die "Can't open $output_dir/$family"."_newCDS.fasta for writing : $!\n";
-		print OUT ">".$seq."\n".$gene->get_column('protein')."\n";
-		close(OUT);
-		$analysis->MRC::DB::insert_familymember($family, $seq);
+	    chomp($_);
+	    next if  $_ =~ m/^#/;
+	    my @line   = split(/\t/,$_);
+	    my $seq    = $line[0];
+	    my $family = $line[1];
+	    my $gene   = $analysis->MRC::DB::find_gene_by_gene_oid($seq);
+	    open(OUT,">>$output_dir/$family"."_newCDS.fasta")|| die "Can't open $output_dir/$family"."_newCDS.fasta for writing : $!\n";
+	    print OUT ">".$seq."\n".$gene->get_column('protein')."\n";
+	    close(OUT);
+	    $analysis->MRC::DB::insert_familymember($family, $seq);
 	}
 	close(IN);
 }
